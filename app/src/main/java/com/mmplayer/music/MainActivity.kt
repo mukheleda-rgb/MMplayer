@@ -16,6 +16,13 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.*
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.fadeIn
+import androidx.compose.animation.fadeOut
+import androidx.compose.animation.slideInHorizontally
+import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.togetherWith
+import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -127,8 +134,12 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, play: 
         if (uri != null) try {
             val raw = ctx.contentResolver.openInputStream(uri)?.bufferedReader()?.use { it.readText() } ?: ""
             val nm = uri.lastPathSegment?.substringAfterLast(':')?.substringAfterLast('/')?.substringBeforeLast('.') ?: "Imported"
-            val ids = raw.lines().filter { it.isNotBlank() && !it.startsWith("#") }.mapNotNull { line ->
-                tracks.firstOrNull { it.path.equals(line.trim(), true) || it.title.equals(line.substringAfterLast('/').substringBeforeLast('.'), true) }?.id
+            // Preserve M3U item order exactly as listed in the source file.
+            val entries = raw.lineSequence().map { it.trim().removePrefix("\uFEFF") }.filter { it.isNotBlank() && !it.startsWith("#") }.toList()
+            val ids = entries.mapNotNull { entry ->
+                val path = if (entry.startsWith("file://", true)) Uri.parse(entry).path ?: entry else entry
+                val title = path.substringAfterLast('/').substringBeforeLast('.', path.substringAfterLast('/'))
+                tracks.firstOrNull { it.path.equals(path, true) }?.id ?: tracks.firstOrNull { it.title.equals(title, true) }?.id
             }
             lists = lists + (nm to ids); putLists(ctx, lists)
             Toast.makeText(ctx, tr("تم استيراد القائمة", "Playlist imported") + " (" + ids.size + ")", Toast.LENGTH_LONG).show()
@@ -151,7 +162,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, play: 
     val base = when (tab) {
         "quran" -> tracks.filter { it.quran }
         "music" -> tracks.filter { !it.quran }
-        "playlist" -> tracks.filter { it.id in lists[activeList].orEmpty() }
+        "playlist" -> lists[activeList].orEmpty().mapNotNull { id -> tracks.firstOrNull { it.id == id } }
         else -> tracks.filter { !it.quran }
     }
     val filtered = base.filter { it.title.contains(search, true) || it.artist.contains(search, true) }
@@ -161,13 +172,14 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, play: 
         "size" -> filtered.sortedByDescending { it.size }
         else -> if (manual.isEmpty()) filtered else filtered.sortedBy { manual.indexOf(it.id).let { n -> if (n < 0) Int.MAX_VALUE else n } }
     }
+    val playerQueue = if (current != null && activeList.isNotBlank() && current.id in lists[activeList].orEmpty()) lists[activeList].orEmpty().mapNotNull { id -> tracks.firstOrNull { it.id == id } } else tracks.filter { it.quran == (current?.quran ?: false) }
     MaterialTheme(colorScheme = darkColorScheme(primary = th.accent, secondary = th.second, background = th.bg, surface = th.panel)) {
         if (expanded && current != null) {
-            FullPlayer(current, tracks.filter { it.quran == current.quran }, playing, th, ar, { expanded = false }, toggle, next, previous, play)
+            FullPlayer(current, playerQueue, playing, th, ar, { expanded = false }, toggle, next, previous, play)
         } else {
             Scaffold(containerColor = th.bg, bottomBar = {
                 Column {
-                    if (current != null) Row(Modifier.fillMaxWidth().padding(8.dp).clip(RoundedCornerShape(15.dp)).background(th.panel).clickable { expanded = true }.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
+                    if (current != null) Row(Modifier.fillMaxWidth().animateContentSize().padding(8.dp).clip(RoundedCornerShape(15.dp)).background(th.panel).clickable { expanded = true }.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Art(current, Modifier.size(42.dp), th)
                         Column(Modifier.weight(1f).padding(horizontal = 9.dp)) { Text(current.title, color = Color.White, maxLines = 1); Text(current.artist, color = Color.LightGray, fontSize = 11.sp) }
                         IconButton(onClick = toggle) { Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null, tint = th.accent) }
@@ -249,10 +261,14 @@ private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: A
         Box(Modifier.fillMaxWidth().padding(top = 14.dp), contentAlignment = Alignment.Center) { Box(Modifier.width(42.dp).height(5.dp).clip(CircleShape).background(Color.Gray)) }
         Row(Modifier.fillMaxWidth().padding(vertical = 15.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(onClick = close) { Icon(Icons.Rounded.KeyboardArrowDown, null, tint = Color.White) }; Text(if (ar) "قيد التشغيل" else "Now playing", color = Color.White, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center); Icon(Icons.Rounded.MoreHoriz, null, tint = Color.White) }
         Spacer(Modifier.weight(0.3f))
-        Art(track, Modifier.fillMaxWidth().aspectRatio(1f).padding(horizontal = 18.dp), th)
-        Spacer(Modifier.height(24.dp))
-        Text(track.title, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
-        Text(track.artist, color = Color.LightGray, modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+        AnimatedContent(targetState = track, transitionSpec = { (slideInHorizontally { it / 3 } + fadeIn()) togetherWith (slideOutHorizontally { -it / 3 } + fadeOut()) }, label = "now-playing-track") { animatedTrack ->
+            Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                Art(animatedTrack, Modifier.fillMaxWidth().aspectRatio(1f).padding(horizontal = 18.dp), th)
+                Spacer(Modifier.height(24.dp))
+                Text(animatedTrack.title, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(animatedTrack.artist, color = Color.LightGray, modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+            }
+        }
         Spacer(Modifier.height(20.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = previous) { Icon(Icons.Rounded.SkipPrevious, null, tint = Color.White, modifier = Modifier.size(42.dp)) }
@@ -260,9 +276,9 @@ private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: A
             IconButton(onClick = next) { Icon(Icons.Rounded.SkipNext, null, tint = Color.White, modifier = Modifier.size(42.dp)) }
         }
         Spacer(Modifier.weight(0.2f))
-        Text(if (ar) "قائمة الملفات — اضغط للتشغيل واسحب للتنقل" else "Queue — tap to play, swipe to browse", color = th.accent, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
+        Text(if (ar) "قائمة التشغيل الحالية" else "Current playlist", color = th.accent, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
         LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 16.dp)) {
-            items(queue, key = { it.id }) { item -> Column(Modifier.width(84.dp).clickable { play(item) }, horizontalAlignment = Alignment.CenterHorizontally) { Art(item, Modifier.size(72.dp), th); Text(item.title, color = if (item.id == track.id) th.accent else Color.White, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis) } }
+            items(queue, key = { it.id }) { item -> Column(Modifier.width(88.dp).clip(RoundedCornerShape(12.dp)).background(if (item.id == track.id) th.accent.copy(alpha = 0.20f) else th.panel).border(if (item.id == track.id) 2.dp else 1.dp, if (item.id == track.id) th.accent else Color.Transparent, RoundedCornerShape(12.dp)).clickable { play(item) }.padding(6.dp), horizontalAlignment = Alignment.CenterHorizontally) { Art(item, Modifier.size(72.dp), th); Text(item.title, color = if (item.id == track.id) th.accent else Color.White, fontSize = 10.sp, fontWeight = if (item.id == track.id) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis) } }
         }
     }
 }
@@ -281,14 +297,20 @@ private fun TrackRows(rows: List<Track>, current: Track?, th: AppTheme, play: (T
     LazyColumn(verticalArrangement = Arrangement.spacedBy(3.dp)) {
         items(rows, key = { it.id }) { t ->
             val i = rows.indexOf(t); var delta by remember { mutableFloatStateOf(0f) }
-            Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+            Row(Modifier.fillMaxWidth().animateContentSize().padding(vertical = 5.dp).clip(RoundedCornerShape(12.dp)).background(if (current?.id == t.id) th.accent.copy(alpha = 0.16f) else Color.Transparent).border(if (current?.id == t.id) 1.dp else 0.dp, if (current?.id == t.id) th.accent else Color.Transparent, RoundedCornerShape(12.dp)), verticalAlignment = Alignment.CenterVertically) {
                 Row(Modifier.weight(1f).pointerInput(t.id) { detectTapGestures(onTap = { play(t) }, onLongPress = { menu(t) }) }, verticalAlignment = Alignment.CenterVertically) {
                     Art(t, Modifier.size(46.dp), th)
                     Column(Modifier.weight(1f).padding(horizontal = 10.dp)) { Text(t.title, color = if (current?.id == t.id) th.accent else Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis); Text(t.artist + " • " + time(t.duration), color = Color.LightGray, fontSize = 11.sp, maxLines = 1) }
                 }
                 IconButton(onClick = { menu(t) }) { Icon(Icons.Rounded.MoreVert, null, tint = Color.LightGray) }
-                Icon(Icons.Rounded.DragHandle, null, tint = Color.Gray, modifier = Modifier.pointerInput(t.id) {
-                    detectDragGestures(onDragEnd = { delta = 0f }) { change, d -> delta += d.y; if (delta > 40 && i < rows.lastIndex) { move(i, i + 1); delta = 0f }; if (delta < -40 && i > 0) { move(i, i - 1); delta = 0f }; change.consume() }
+                var dragIndex by remember(t.id) { mutableIntStateOf(i) }
+                Icon(Icons.Rounded.DragHandle, null, tint = th.accent, modifier = Modifier.padding(horizontal = 8.dp).pointerInput(t.id, rows.size) {
+                    detectDragGestures(onDragStart = { dragIndex = i; delta = 0f }, onDragEnd = { delta = 0f }) { change, d ->
+                        delta += d.y
+                        while (delta >= 28f && dragIndex < rows.lastIndex) { move(dragIndex, dragIndex + 1); dragIndex++; delta -= 28f }
+                        while (delta <= -28f && dragIndex > 0) { move(dragIndex, dragIndex - 1); dragIndex--; delta += 28f }
+                        change.consume()
+                    }
                 })
             }
         }
