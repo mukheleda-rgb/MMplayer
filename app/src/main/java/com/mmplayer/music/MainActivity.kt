@@ -16,6 +16,7 @@ import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.*
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
 import androidx.compose.foundation.shape.CircleShape
@@ -205,7 +206,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, play: 
                                 Tile(tr("القرآن", "Quran"), tracks.count { it.quran }.toString(), Icons.Rounded.MenuBook, Modifier.weight(1f), th) { tab = "quran" }
                             }
                             Text(tr("أُضيفت مؤخراً", "Recently added"), color = Color.White, fontSize = 18.sp, modifier = Modifier.padding(vertical = 12.dp))
-                            TrackRows(tracks.sortedByDescending { it.added }.take(12), current, th, play, { selected = it }, {})
+                            TrackRows(tracks.sortedByDescending { it.added }.take(12), current, th, play, { selected = it }, { _, _ -> })
                         }
                         else -> {
                             if (tab == "playlist") Row(verticalAlignment = Alignment.CenterVertically) { Text(activeList, color = Color.White, modifier = Modifier.weight(1f)); IconButton(onClick = { exportFile.launch(activeList + ".m3u") }) { Icon(Icons.Rounded.FileDownload, null, tint = th.accent) } }
@@ -280,7 +281,7 @@ private fun TrackRows(rows: List<Track>, current: Track?, th: AppTheme, play: (T
         items(rows, key = { it.id }) { t ->
             val i = rows.indexOf(t); var delta by remember { mutableFloatStateOf(0f) }
             Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                Row(Modifier.weight(1f).pointerInput(t.id) { androidx.compose.foundation.gestures.detectTapGestures(onTap = { play(t) }, onLongPress = { menu(t) }) }, verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.weight(1f).pointerInput(t.id) { detectTapGestures(onTap = { play(t) }, onLongPress = { menu(t) }) }, verticalAlignment = Alignment.CenterVertically) {
                     Art(t, Modifier.size(46.dp), th)
                     Column(Modifier.weight(1f).padding(horizontal = 10.dp)) { Text(t.title, color = if (current?.id == t.id) th.accent else Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis); Text(t.artist + " • " + time(t.duration), color = Color.LightGray, fontSize = 11.sp, maxLines = 1) }
                 }
