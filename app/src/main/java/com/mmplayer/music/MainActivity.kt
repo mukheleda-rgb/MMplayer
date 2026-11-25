@@ -280,7 +280,7 @@ private fun TrackRows(rows: List<Track>, current: Track?, th: AppTheme, play: (T
         items(rows, key = { it.id }) { t ->
             val i = rows.indexOf(t); var delta by remember { mutableFloatStateOf(0f) }
             Row(Modifier.fillMaxWidth().padding(vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                Row(Modifier.weight(1f).clickable { play(t) }, verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.weight(1f).pointerInput(t.id) { androidx.compose.foundation.gestures.detectTapGestures(onTap = { play(t) }, onLongPress = { menu(t) }) }, verticalAlignment = Alignment.CenterVertically) {
                     Art(t, Modifier.size(46.dp), th)
                     Column(Modifier.weight(1f).padding(horizontal = 10.dp)) { Text(t.title, color = if (current?.id == t.id) th.accent else Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis); Text(t.artist + " • " + time(t.duration), color = Color.LightGray, fontSize = 11.sp, maxLines = 1) }
                 }
