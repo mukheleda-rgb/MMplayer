@@ -7,6 +7,7 @@ import android.media.audiofx.Equalizer
 import android.content.ContentUris
 import android.content.ComponentName
 import android.content.Context
+import android.content.Intent
 import android.content.pm.PackageManager
 import android.database.Cursor
 import android.net.Uri
@@ -478,6 +479,8 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
     var manual by remember { mutableStateOf(runCatching { val a = JSONArray(prefs.getString("manual_order", "[]") ?: "[]"); (0 until a.length()).map { a.getLong(it) } }.getOrDefault(emptyList())) }
     var categoryOverrides by remember { mutableStateOf(runCatching { val j = JSONObject(prefs.getString("category_overrides", "{}") ?: "{}"); buildMap<Long, Boolean> { j.keys().forEach { put(it.toLong(), j.getBoolean(it)) } } }.getOrDefault(emptyMap())) }
     var playCounts by remember { mutableStateOf(runCatching { val j = JSONObject(prefs.getString("play_counts", "{}") ?: "{}"); buildMap<Long, Int> { j.keys().forEach { put(it.toLong(), j.getInt(it)) } } }.getOrDefault(emptyMap())) }
+    var favoriteIds by remember { mutableStateOf(runCatching { val a = JSONArray(prefs.getString("favorite_ids", "[]") ?: "[]"); (0 until a.length()).map { a.getLong(it) }.toSet() }.getOrDefault(emptySet())) }
+    var favoritesOnly by remember { mutableStateOf(false) }
     LaunchedEffect(current?.id) { current?.let { t -> playCounts = playCounts + (t.id to ((playCounts[t.id] ?: 0) + 1)); val j = JSONObject(); playCounts.forEach { (id, n) -> j.put(id.toString(), n) }; prefs.edit().putString("play_counts", j.toString()).putLong("last_track_id", t.id).apply() } }
     var hiddenFolders by remember { mutableStateOf(runCatching { val a = JSONArray(prefs.getString("hidden_folders", "[]") ?: "[]"); (0 until a.length()).map { a.getString(it) }.toSet() }.getOrDefault(emptySet())) }
     var showFoldersDialog by remember { mutableStateOf(false) }
@@ -594,7 +597,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                         "playlist" -> lists[activeList].orEmpty().mapNotNull { id -> visibleTracks.firstOrNull { it.id == id } }
                         else -> visibleTracks.filter { !it.quran }
                     } }
-                    val pageFiltered = remember(pageBase, search) { pageBase.filter { it.title.contains(search, true) || it.artist.contains(search, true) } }
+                    val pageFiltered = remember(pageBase, search, favoritesOnly, favoriteIds) { pageBase.filter { (it.title.contains(search, true) || it.artist.contains(search, true)) && (!favoritesOnly || it.id in favoriteIds) } }
                     val pageShown = remember(pageFiltered, sort, manual) { when (sort) {
                         "name" -> pageFiltered.sortedBy { it.title.lowercase() }
                         "date" -> pageFiltered.sortedByDescending { it.added }
@@ -845,7 +848,13 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                         Spacer(Modifier.width(4.dp))
                                     }
                                 }
-                                Text(pageShown.size.toString() + " " + tr("ملف", "files"), color = secondaryText, fontSize = 11.sp, modifier = Modifier.padding(bottom = 3.dp))
+                                Row(Modifier.fillMaxWidth().padding(bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(pageShown.size.toString() + " " + tr("ملف", "files"), color = secondaryText, fontSize = 11.sp, modifier = Modifier.weight(1f))
+                                    FilterChip(selected = favoritesOnly, onClick = { favoritesOnly = !favoritesOnly },
+                                        label = { Text(tr("المفضلة", "Favorites"), fontSize = 11.sp) },
+                                        leadingIcon = { Icon(Icons.Rounded.Favorite, null, modifier = Modifier.size(14.dp)) },
+                                        colors = FilterChipDefaults.filterChipColors(selectedContainerColor = th.accent.copy(alpha = .2f), selectedLabelColor = th.accent, selectedLeadingIconColor = th.accent))
+                                }
                                 if (tracks.isEmpty() || libraryMessage.isNotBlank()) {
                                     Text(libraryMessage, color = if (tracks.isEmpty()) th.second else Color.LightGray, fontSize = 12.sp, modifier = Modifier.padding(vertical = 6.dp))
                                 }
@@ -1153,6 +1162,24 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
             containerColor = th.panel, titleContentColor = th.primaryText, textContentColor = th.secondaryText, iconContentColor = th.accent,
             onDismissRequest = { selected = null }, title = { Text(t.title, maxLines = 1) }, text = { Column {
             TextButton(onClick = { val updated = categoryOverrides + (t.id to !t.quran); categoryOverrides = updated; val json = JSONObject(); updated.forEach { (id, isQuran) -> json.put(id.toString(), isQuran) }; prefs.edit().putString("category_overrides", json.toString()).apply(); selected = null; Toast.makeText(ctx, if (t.quran) tr("تم نقل الملف إلى تصنيف الموسيقى", "File moved to Music") else tr("تم نقل الملف إلى تصنيف القرآن", "File moved to Quran"), Toast.LENGTH_SHORT).show() }) { Text(if (t.quran) tr("تغيير التصنيف إلى الموسيقى", "Change category to Music") else tr("تغيير التصنيف إلى القرآن", "Change category to Quran")) }
+            TextButton(onClick = {
+                val wasFavorite = t.id in favoriteIds
+                favoriteIds = if (wasFavorite) favoriteIds - t.id else favoriteIds + t.id
+                prefs.edit().putString("favorite_ids", JSONArray(favoriteIds.toList()).toString()).apply()
+                Toast.makeText(ctx, if (wasFavorite) tr("أزيل من المفضلة", "Removed from favorites") else tr("أضيف إلى المفضلة", "Added to favorites"), Toast.LENGTH_SHORT).show()
+            }) { Text(if (t.id in favoriteIds) tr("إزالة من المفضلة", "Remove from favorites") else tr("إضافة إلى المفضلة", "Add to favorites")) }
+            TextButton(onClick = {
+                runCatching {
+                    val share = Intent(Intent.ACTION_SEND).apply {
+                        type = "audio/*"
+                        putExtra(Intent.EXTRA_STREAM, t.uri)
+                        putExtra(Intent.EXTRA_SUBJECT, t.title)
+                        addFlags(Intent.FLAG_GRANT_READ_URI_PERMISSION)
+                    }
+                    ctx.startActivity(Intent.createChooser(share, tr("مشاركة الملف الصوتي", "Share audio")))
+                }.onFailure { Toast.makeText(ctx, tr("تعذرت مشاركة الملف", "Unable to share this file"), Toast.LENGTH_SHORT).show() }
+                selected = null
+            }) { Text(tr("مشاركة الملف", "Share track")) }
             TextButton(onClick = { selectionMode = true; selectedTrackIds = selectedTrackIds + t.id; selected = null }) { Text(tr("تحديد هذا الملف", "Select this track")) }
             TextButton(onClick = { dialog = "add" }) { Text(tr("إضافة إلى قائمة تشغيل", "Add to playlist")) }
             TextButton(onClick = { dialog = "new"; newName = "" }) { Text(tr("إنشاء قائمة جديدة", "Create new playlist")) }
