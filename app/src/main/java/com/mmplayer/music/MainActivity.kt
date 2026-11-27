@@ -900,7 +900,21 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                         Text(selectedTrackIds.size.toString() + " " + tr("محدد", "selected"), color = secondaryText, modifier = Modifier.weight(1f))
                                         TextButton(enabled = selectedTrackIds.isNotEmpty() && lists.isNotEmpty(), onClick = { dialog = "bulk_add" }) { Text(tr("إضافة لقائمة", "Add to list"), fontSize = 11.sp) }
                                         TextButton(enabled = selectedTrackIds.isNotEmpty(), onClick = { newName = ""; dialog = "new_from_selection" }) { Text(tr("إنشاء قائمة", "Create list"), fontSize = 11.sp) }
-                                        TextButton(enabled = selectedTrackIds.isNotEmpty(), onClick = { deleteTargets = pageShown.filter { it.id in selectedTrackIds }; dialog = "delete_tracks" }) { Text(tr("حذف", "Delete"), color = Color(0xFFFF7777)) }
+                                        TextButton(enabled = selectedTrackIds.isNotEmpty(), onClick = {
+                                            favoriteIds = favoriteIds + selectedTrackIds
+                                            prefs.edit().putString("favorite_ids", JSONArray(favoriteIds.toList()).toString()).apply()
+                                            selectedTrackIds = emptySet(); selectionMode = false
+                                            Toast.makeText(ctx, tr("أضيفت الملفات إلى المفضلة", "Tracks added to favorites"), Toast.LENGTH_SHORT).show()
+                                        }) { Text(tr("للمفضلة", "Favorite"), fontSize = 11.sp) }
+                                        TextButton(enabled = selectedTrackIds.isNotEmpty(), onClick = {
+                                            if (activeTab == "playlist") {
+                                                lists = lists + (activeList to lists[activeList].orEmpty().filterNot { it in selectedTrackIds })
+                                                putLists(ctx, lists); selectedTrackIds = emptySet(); selectionMode = false
+                                                Toast.makeText(ctx, tr("أزيلت الملفات من القائمة فقط", "Tracks removed from playlist only"), Toast.LENGTH_SHORT).show()
+                                            } else {
+                                                deleteTargets = pageShown.filter { it.id in selectedTrackIds }; dialog = "delete_tracks"
+                                            }
+                                        }) { Text(if (activeTab == "playlist") tr("إزالة", "Remove") else tr("حذف", "Delete"), color = Color(0xFFFF7777), fontSize = 11.sp) }
                                         TextButton(onClick = { selectionMode = false; selectedTrackIds = emptySet() }) { Text(tr("إلغاء", "Cancel")) }
                                     }
                                 }
