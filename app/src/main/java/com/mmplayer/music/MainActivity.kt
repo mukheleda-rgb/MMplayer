@@ -260,15 +260,14 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
     var hiddenFolders by remember { mutableStateOf(runCatching { val a = JSONArray(prefs.getString("hidden_folders", "[]") ?: "[]"); (0 until a.length()).map { a.getString(it) }.toSet() }.getOrDefault(emptySet())) }
     var showFoldersDialog by remember { mutableStateOf(false) }
     var settingsSection by remember { mutableStateOf("") }
-    var navigationEffect by remember { mutableStateOf(prefs.getString("navigation_effect", "card") ?: "card") }
     var playerEffect by remember { mutableStateOf(prefs.getString("player_effect", "glow") ?: "glow") }
     var playerTheme by remember { mutableStateOf(prefs.getString("player_theme", "glass") ?: "glass") }
     var swipeTabsEnabled by remember { mutableStateOf(prefs.getBoolean("swipe_tabs", true)) }
     var backgroundPickerTab by remember { mutableStateOf("home") }
     val tabKeys = listOf("home", "music", "quran", "lists", "settings")
     val pagerState = rememberPagerState(initialPage = tabKeys.indexOf(if (tab == "playlist") "lists" else tab).coerceAtLeast(0), pageCount = { tabKeys.size })
-    LaunchedEffect(tab) { val page = tabKeys.indexOf(if (tab == "playlist") "lists" else tab).coerceAtLeast(0); if (pagerState.currentPage != page) pagerState.animateScrollToPage(page) }
-    LaunchedEffect(pagerState.settledPage) { val pageTab = tabKeys[pagerState.settledPage.coerceIn(tabKeys.indices)]; if (tab != "playlist" || pageTab != "lists") tab = pageTab }
+    LaunchedEffect(tab) { val mappedTab = when (tab) { "playlist" -> "lists"; "most", "recent" -> "home"; else -> tab }; val page = tabKeys.indexOf(mappedTab).coerceAtLeast(0); if (pagerState.currentPage != page) pagerState.animateScrollToPage(page) }
+    LaunchedEffect(pagerState.settledPage) { val pageTab = tabKeys[pagerState.settledPage.coerceIn(tabKeys.indices)]; if (!((tab == "playlist" && pageTab == "lists") || (tab in listOf("most", "recent") && pageTab == "home"))) tab = pageTab }
     val tabBackgrounds = remember { mutableStateMapOf<String, String>().apply { tabKeys.forEach { put(it, prefs.getString("bg_" + it, "") ?: "") } } }
     val tabDim = remember { mutableStateMapOf<String, Float>().apply { tabKeys.forEach { val saved = prefs.getFloat("dim_" + it, 0.68f); put(it, if (saved < 0.55f) 0.68f else saved) } } }
     val tabBlur = remember { mutableStateMapOf<String, Float>().apply { tabKeys.forEach { put(it, prefs.getFloat("blur_" + it, 0f)) } } }
@@ -370,7 +369,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                     pageSpacing = 0.dp
                 ) { page ->
                     val pageKey = tabKeys[page]
-                    val activeTab = if (pageKey == "lists" && tab == "playlist") "playlist" else pageKey
+                    val activeTab = when { pageKey == "lists" && tab == "playlist" -> "playlist"; pageKey == "home" && tab in listOf("most", "recent") -> tab; else -> pageKey }
                     val bg = tabBackgrounds[pageKey].orEmpty()
                     Box(Modifier.fillMaxSize().background(th.bg)) {
                         if (bg.isNotBlank()) AsyncImage(model = Uri.parse(bg), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().blur((tabBlur[pageKey] ?: 0f).dp))
@@ -380,7 +379,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                 Row(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f)) {
                                         Text("MMplayer", color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.Bold)
-                                        Text(when (activeTab) { "settings" -> tr("الإعدادات", "Settings"); "quran" -> tr("مكتبة القرآن", "Quran library"); "music" -> tr("مكتبة الموسيقى", "Music library"); "lists" -> tr("قوائم التشغيل", "Playlists"); "playlist" -> activeList; else -> tr("مساحتك الصوتية", "Your audio space") }, color = th.accent)
+                                        Text(when (activeTab) { "settings" -> tr("الإعدادات", "Settings"); "quran" -> tr("مكتبة القرآن", "Quran library"); "music" -> tr("مكتبة الموسيقى", "Music library"); "lists" -> tr("قوائم التشغيل", "Playlists"); "playlist" -> activeList; "most" -> tr("الأكثر تشغيلًا", "Most played"); "recent" -> tr("أُضيفت حديثاً", "Recently added"); else -> tr("مساحتك الصوتية", "Your audio space") }, color = th.accent)
                                     }
                                     IconButton(onClick = refresh) { Icon(Icons.Rounded.Refresh, null, tint = Color.White) }
                                 }
@@ -575,13 +574,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                 Text(tr("تفعيل السحب يميناً ويساراً", "Enable left / right swiping"), color = Color.White, modifier = Modifier.weight(1f))
                                 Switch(checked = swipeTabsEnabled, onCheckedChange = { swipeTabsEnabled = it; prefs.edit().putBoolean("swipe_tabs", it).apply() })
                             }
-                            Text(tr("تأثير الانتقال بين التبويبات", "Tab transition effect"), color = th.accent, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 10.dp))
-                            listOf("card" to tr("بطاقة (افتراضي)", "Card (default)"), "slide" to tr("انزلاق", "Slide"), "fade" to tr("تلاشي", "Fade"), "zoom" to tr("تكبير وتصغير", "Zoom"), "vertical" to tr("انزلاق عمودي", "Vertical")).forEach { (value, label) ->
-                                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (navigationEffect == value) th.accent.copy(alpha = 0.16f) else Color.Transparent).clickable { navigationEffect = value; prefs.edit().putString("navigation_effect", value).apply() }.padding(9.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Text(label, color = Color.White, modifier = Modifier.weight(1f))
-                                    if (navigationEffect == value) Icon(Icons.Rounded.CheckCircle, null, tint = th.accent)
-                                }
-                            }
+                            Text(tr("تتحرك الصفحات مع إصبعك أثناء السحب، ثم تستقر عند الإفلات.", "Pages follow your finger while dragging, then settle on release."), color = Color.LightGray, fontSize = 12.sp, modifier = Modifier.padding(top = 10.dp))
                         }
                         "player" -> {
                             Text(tr("ثيم المشغل", "Player theme"), color = th.accent, fontWeight = FontWeight.Bold)
