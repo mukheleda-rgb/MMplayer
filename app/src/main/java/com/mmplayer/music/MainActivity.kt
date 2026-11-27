@@ -317,6 +317,7 @@ private fun TrackRows(rows: List<Track>, current: Track?, th: AppTheme, play: (T
         items(rows, key = { it.id }) { t ->
             val i = rows.indexOfFirst { it.id == t.id }
             var delta by remember(t.id) { mutableFloatStateOf(0f) }
+            var dragIndex by remember(t.id) { mutableIntStateOf(i) }
             val isDragging = draggingId == t.id
             Row(
                 Modifier.fillMaxWidth()
@@ -355,18 +356,19 @@ private fun TrackRows(rows: List<Track>, current: Track?, th: AppTheme, play: (T
                     modifier = Modifier.padding(horizontal = 8.dp)
                         .pointerInput(t.id, rows.size) {
                             detectDragGestures(
-                                onDragStart = { draggingId = t.id; delta = 0f },
+                                onDragStart = { draggingId = t.id; dragIndex = rows.indexOfFirst { it.id == t.id }; delta = 0f },
                                 onDragEnd = { draggingId = null; delta = 0f },
                                 onDragCancel = { draggingId = null; delta = 0f }
                             ) { change, dragAmount ->
                                 delta += dragAmount.y
-                                while (delta >= 20f && i + 1 < rows.size) {
-                                    move(rows.indexOfFirst { it.id == t.id }, rows.indexOfFirst { it.id == t.id } + 1)
+                                while (delta >= 20f && dragIndex < rows.lastIndex) {
+                                    move(dragIndex, dragIndex + 1)
+                                    dragIndex++
                                     delta -= 20f
                                 }
-                                while (delta <= -20f && rows.indexOfFirst { it.id == t.id } > 0) {
-                                    val from = rows.indexOfFirst { it.id == t.id }
-                                    move(from, from - 1)
+                                while (delta <= -20f && dragIndex > 0) {
+                                    move(dragIndex, dragIndex - 1)
+                                    dragIndex--
                                     delta += 20f
                                 }
                                 change.consume()
