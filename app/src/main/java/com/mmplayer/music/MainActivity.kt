@@ -313,9 +313,11 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                     if (bg.isNotBlank()) AsyncImage(model = Uri.parse(bg), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().blur((tabBlur[tab] ?: 0f).dp))
                     Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = tabDim[tab] ?: 0.42f)))
                     Column(Modifier.fillMaxSize().animateContentSize(tween(260)).padding(pad).padding(horizontal = 16.dp)) {
-                    Row(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                        Column(Modifier.weight(1f)) { Text("MMplayer", color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.Bold); Text(when (tab) { "settings" -> tr("الإعدادات", "Settings"); "quran" -> tr("مكتبة القرآن", "Quran library"); "music" -> tr("مكتبة الموسيقى", "Music library"); "lists" -> tr("قوائم التشغيل", "Playlists"); else -> tr("مساحتك الصوتية", "Your audio space") }, color = th.accent) }
-                        IconButton(onClick = refresh) { Icon(Icons.Rounded.Refresh, null, tint = Color.White) }
+                    if (tab != "home") {
+                        Row(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Column(Modifier.weight(1f)) { Text("MMplayer", color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.Bold); Text(when (tab) { "settings" -> tr("الإعدادات", "Settings"); "quran" -> tr("مكتبة القرآن", "Quran library"); "music" -> tr("مكتبة الموسيقى", "Music library"); "lists" -> tr("قوائم التشغيل", "Playlists"); else -> tr("مساحتك الصوتية", "Your audio space") }, color = th.accent) }
+                            IconButton(onClick = refresh) { Icon(Icons.Rounded.Refresh, null, tint = Color.White) }
+                        }
                     }
                     when (tab) {
                         "settings" -> {
