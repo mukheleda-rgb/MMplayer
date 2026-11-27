@@ -355,17 +355,20 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                     }
                 }
             }) { pad ->
+                var fingerDragX by remember { mutableFloatStateOf(0f) }
                 Box(Modifier.fillMaxSize().pointerInput(tab, swipeTabsEnabled) {
                     if (swipeTabsEnabled) {
-                        var dragX = 0f
                         detectHorizontalDragGestures(onDragEnd = {
-                            if (kotlin.math.abs(dragX) > 64f && tab in tabKeys) {
+                            if (kotlin.math.abs(fingerDragX) > 52f && tab in tabKeys) {
                                 val index = tabKeys.indexOf(tab)
-                                val nextIndex = if (dragX < 0f) (index + 1).coerceAtMost(tabKeys.lastIndex) else (index - 1).coerceAtLeast(0)
+                                val nextIndex = if (fingerDragX < 0f) (index + 1).coerceAtMost(tabKeys.lastIndex) else (index - 1).coerceAtLeast(0)
                                 if (nextIndex != index) tab = tabKeys[nextIndex]
                             }
-                            dragX = 0f
-                        }, onDragCancel = { dragX = 0f }) { change, amount -> dragX += amount; change.consume() }
+                            fingerDragX = 0f
+                        }, onDragCancel = { fingerDragX = 0f }) { change, amount ->
+                            fingerDragX = (fingerDragX + amount).coerceIn(-size.width * 0.92f, size.width * 0.92f)
+                            change.consume()
+                        }
                     }
                 }) {
                     val bg = tabBackgrounds[tab].orEmpty()
@@ -378,14 +381,14 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                             IconButton(onClick = refresh) { Icon(Icons.Rounded.Refresh, null, tint = Color.White) }
                         }
                     }
-                    AnimatedContent(targetState = tab, modifier = Modifier.weight(1f).fillMaxWidth(), transitionSpec = {
+                    AnimatedContent(targetState = tab, modifier = Modifier.weight(1f).fillMaxWidth().graphicsLayer { translationX = fingerDragX }, transitionSpec = {
                         val forward = tabKeys.indexOf(targetState) >= tabKeys.indexOf(initialState)
                         when (navigationEffect) {
-                            "slide" -> (slideInHorizontally(tween(260)) { if (forward) it else -it } + fadeIn(tween(220))) togetherWith (slideOutHorizontally(tween(220)) { if (forward) -it / 3 else it / 3 } + fadeOut(tween(180)))
-                            "fade" -> fadeIn(tween(320)) togetherWith fadeOut(tween(220))
-                            "zoom" -> (fadeIn(tween(260)) + scaleIn(initialScale = 0.88f, animationSpec = tween(260))) togetherWith (fadeOut(tween(200)) + scaleOut(targetScale = 0.94f, animationSpec = tween(200)))
-                            "vertical" -> (slideInVertically(tween(260)) { it / 3 } + fadeIn(tween(220))) togetherWith (slideOutVertically(tween(220)) { -it / 4 } + fadeOut(tween(180)))
-                            else -> (slideInHorizontally(tween(300)) { if (forward) it else -it } + fadeIn(tween(260)) + scaleIn(initialScale = 0.94f, animationSpec = tween(300))) togetherWith (slideOutHorizontally(tween(240)) { if (forward) -it / 4 else it / 4 } + fadeOut(tween(220)) + scaleOut(targetScale = 0.97f, animationSpec = tween(220)))
+                            "slide" -> (slideInHorizontally(tween(160)) { if (forward) it else -it } + fadeIn(tween(140))) togetherWith (slideOutHorizontally(tween(130)) { if (forward) -it / 5 else it / 5 } + fadeOut(tween(110)))
+                            "fade" -> fadeIn(tween(180)) togetherWith fadeOut(tween(120))
+                            "zoom" -> (fadeIn(tween(180)) + scaleIn(initialScale = 0.96f, animationSpec = tween(180))) togetherWith (fadeOut(tween(120)) + scaleOut(targetScale = 0.98f, animationSpec = tween(120)))
+                            "vertical" -> (slideInVertically(tween(170)) { it / 5 } + fadeIn(tween(140))) togetherWith (slideOutVertically(tween(130)) { -it / 6 } + fadeOut(tween(110)))
+                            else -> (slideInHorizontally(tween(160)) { if (forward) it else -it } + fadeIn(tween(140))) togetherWith (slideOutHorizontally(tween(130)) { if (forward) -it / 5 else it / 5 } + fadeOut(tween(110)))
                         }
                     }, label = "tab-card-transition") { activeTab ->
                     when (activeTab) {
@@ -593,7 +596,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                 }
                             }
                             Text(tr("تأثير تغيير الملف أثناء التشغيل", "Track-change effect"), color = th.accent, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp))
-                            listOf("glow" to tr("توهج نابض (افتراضي)", "Pulsing glow (default)"), "slide" to tr("انزلاق", "Slide"), "zoom" to tr("تكبير", "Zoom"), "fade" to tr("تلاشي", "Fade"), "flip" to tr("قلب البطاقة", "Card flip")).forEach { (value, label) ->
+                            listOf("glow" to tr("تلاشي ناعم", "Soft fade"), "slide" to tr("انزلاق أفقي", "Horizontal slide"), "rise" to tr("صعود", "Rise"), "drop" to tr("هبوط", "Drop"), "rotate" to tr("دوران خفيف", "Soft rotate"), "blur" to tr("ضبابي", "Blur dissolve"), "bounce" to tr("ارتداد", "Bounce"), "ripple" to tr("تموّج", "Ripple"), "shutter" to tr("غالق سريع", "Shutter"), "fade" to tr("تلاشي متداخل", "Cross fade")).forEach { (value, label) ->
                                 Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (playerEffect == value) th.accent.copy(alpha = 0.16f) else Color.Transparent).clickable { playerEffect = value; prefs.edit().putString("player_effect", value).apply() }.padding(9.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Text(label, color = Color.White, modifier = Modifier.weight(1f))
                                     if (playerEffect == value) Icon(Icons.Rounded.CheckCircle, null, tint = th.accent)
@@ -705,8 +708,6 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
 @Composable
 private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: AppTheme, ar: Boolean, playerEffect: String, playerTheme: String, currentPositionMs: Long, close: () -> Unit, toggle: () -> Unit, next: () -> Unit, previous: () -> Unit, play: (Track) -> Unit, seekTo: (Long) -> Unit, repeatMode: Int, cycleRepeat: () -> Unit, shuffleEnabled: Boolean, toggleShuffle: () -> Unit, openEqualizer: () -> Unit) {
     var dx by remember { mutableFloatStateOf(0f) }; var dy by remember { mutableFloatStateOf(0f) }
-    val pulseTransition = rememberInfiniteTransition(label = "player-pulse")
-    val pulseScale by pulseTransition.animateFloat(initialValue = 1f, targetValue = 1.035f, animationSpec = infiniteRepeatable(animation = tween(950), repeatMode = RepeatMode.Reverse), label = "cover-pulse")
     val playerBackground = when (playerTheme) { "glass" -> th.panel; "neon" -> Color(0xFF080B12); "minimal" -> th.bg; else -> th.bg }
     Column(Modifier.fillMaxSize().background(playerBackground).pointerInput(track.id) {
         detectDragGestures(onDragEnd = { if (dy > 85) close() else if (dx < -60) next() else if (dx > 60) previous(); dx = 0f; dy = 0f }) { change, d -> dx += d.x; dy += d.y; change.consume() }
@@ -714,18 +715,23 @@ private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: A
         Box(Modifier.fillMaxWidth().padding(top = 14.dp), contentAlignment = Alignment.Center) { Box(Modifier.width(42.dp).height(5.dp).clip(CircleShape).background(Color.Gray)) }
         Row(Modifier.fillMaxWidth().padding(vertical = 15.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(onClick = close) { Icon(Icons.Rounded.KeyboardArrowDown, null, tint = Color.White) }; Text(if (ar) "قيد التشغيل" else "Now playing", color = Color.White, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center); Icon(Icons.Rounded.MoreHoriz, null, tint = Color.White) }
         Spacer(Modifier.weight(0.3f))
+        Art(track, Modifier.fillMaxWidth().aspectRatio(1f).padding(horizontal = 18.dp), th)
+        Spacer(Modifier.height(24.dp))
         AnimatedContent(targetState = track, transitionSpec = {
             when (playerEffect) {
-                "fade" -> fadeIn(tween(360)) togetherWith fadeOut(tween(260))
-                "zoom" -> (fadeIn(tween(300)) + scaleIn(initialScale = 0.72f, animationSpec = tween(380))) togetherWith (fadeOut(tween(220)) + scaleOut(targetScale = 1.12f, animationSpec = tween(220)))
-                "flip" -> (slideInHorizontally(tween(360)) { it / 2 } + fadeIn(tween(300)) + scaleIn(initialScale = 0.86f)) togetherWith (slideOutHorizontally(tween(260)) { -it / 3 } + fadeOut(tween(220)) + scaleOut(targetScale = 0.9f, animationSpec = tween(220)))
-                "slide" -> (slideInHorizontally(tween(300)) { it / 3 } + fadeIn(tween(240))) togetherWith (slideOutHorizontally(tween(220)) { -it / 3 } + fadeOut(tween(180)))
-                else -> (fadeIn(tween(260)) + scaleIn(initialScale = 0.94f, animationSpec = tween(300))) togetherWith (fadeOut(tween(220)) + scaleOut(targetScale = 1.03f, animationSpec = tween(220)))
+                "fade" -> fadeIn(tween(180)) togetherWith fadeOut(tween(120))
+                "slide" -> (slideInHorizontally(tween(190)) { it / 3 } + fadeIn(tween(160))) togetherWith (slideOutHorizontally(tween(150)) { -it / 4 } + fadeOut(tween(120)))
+                "rise" -> (slideInVertically(tween(210)) { it / 2 } + fadeIn(tween(180))) togetherWith (slideOutVertically(tween(150)) { -it / 4 } + fadeOut(tween(120)))
+                "drop" -> (slideInVertically(tween(210)) { -it / 2 } + fadeIn(tween(180))) togetherWith (slideOutVertically(tween(150)) { it / 4 } + fadeOut(tween(120)))
+                "rotate" -> (fadeIn(tween(220)) + scaleIn(initialScale = 0.94f, animationSpec = tween(220))) togetherWith (fadeOut(tween(150)) + scaleOut(targetScale = 0.96f, animationSpec = tween(150)))
+                "blur" -> (fadeIn(tween(240)) + scaleIn(initialScale = 0.98f, animationSpec = tween(240))) togetherWith fadeOut(tween(160))
+                "bounce" -> (slideInHorizontally(tween(260)) { it / 2 } + fadeIn(tween(220))) togetherWith (slideOutHorizontally(tween(170)) { -it / 5 } + fadeOut(tween(140)))
+                "ripple" -> (fadeIn(tween(260)) + scaleIn(initialScale = 0.90f, animationSpec = tween(260))) togetherWith (fadeOut(tween(170)) + scaleOut(targetScale = 1.04f, animationSpec = tween(170)))
+                "shutter" -> (slideInHorizontally(tween(180)) { it } + fadeIn(tween(140))) togetherWith (slideOutHorizontally(tween(150)) { -it } + fadeOut(tween(110)))
+                else -> (fadeIn(tween(200)) + scaleIn(initialScale = 0.97f, animationSpec = tween(200))) togetherWith fadeOut(tween(140))
             }
         }, label = "now-playing-track") { animatedTrack ->
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Art(animatedTrack, Modifier.fillMaxWidth().aspectRatio(1f).padding(horizontal = 18.dp).graphicsLayer { val scale = if (playerEffect == "glow" && playing) pulseScale else 1f; scaleX = scale; scaleY = scale }, th)
-                Spacer(Modifier.height(24.dp))
                 Text(animatedTrack.title, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(animatedTrack.artist, color = Color.LightGray, modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             }
