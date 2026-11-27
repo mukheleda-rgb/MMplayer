@@ -104,7 +104,7 @@ class MainActivity : ComponentActivity() {
             }
         })
         setContent {
-            MMApp(tracks, current, playing, activeQueue, { track, queue -> play(track, queue) }, { toggle() }, { step(1) }, { step(-1) }, { refreshLibrary() }, libraryMessage, repeatMode, { cycleRepeat() }, shuffleEnabled, { toggleShuffle() }, equalizerEnabled, equalizerLevels, equalizerRange, { setEqualizerEnabled(it) }, { band, level -> setEqualizerBand(band, level) })
+            MMApp(tracks, current, playing, activeQueue, { track, queue -> play(track, queue) }, { toggle() }, { step(1) }, { step(-1) }, { refreshLibrary() }, libraryMessage, repeatMode, { cycleRepeat() }, shuffleEnabled, { toggleShuffle() }, equalizerEnabled, equalizerLevels, equalizerRange, { updateEqualizerEnabled(it) }, { band, level -> setEqualizerBand(band, level) })
         }
         refreshLibrary()
     }
@@ -177,7 +177,7 @@ class MainActivity : ComponentActivity() {
             equalizer = eq
         } catch (_: Exception) { equalizer = null }
     }
-    private fun setEqualizerEnabled(enabled: Boolean) {
+    private fun updateEqualizerEnabled(enabled: Boolean) {
         setupEqualizer()
         equalizerEnabled = enabled
         try { equalizer?.enabled = enabled } catch (_: Exception) { }
