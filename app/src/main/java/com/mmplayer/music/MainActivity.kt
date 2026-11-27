@@ -772,6 +772,12 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                         "home" -> {
                             val recent = remember(visibleTracks) { visibleTracks.sortedByDescending { it.added }.take(10) }
                             val popular = remember(visibleTracks, playCounts) { visibleTracks.sortedByDescending { playCounts[it.id] ?: 0 }.filter { (playCounts[it.id] ?: 0) > 0 }.take(10) }
+                            val favorites = remember(visibleTracks, favoriteIds) { visibleTracks.filter { it.id in favoriteIds } }
+                            val smartMix = remember(visibleTracks, playCounts) {
+                                visibleTracks.filter { !it.quran }
+                                    .sortedWith(compareByDescending<Track> { playCounts[it.id] ?: 0 }.thenByDescending { it.added })
+                                    .take(20)
+                            }
                             val last = visibleTracks.firstOrNull { it.id == prefs.getLong("last_track_id", -1L) }
                             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
                                 val brandTransition = rememberInfiniteTransition(label = "brandGlow")
@@ -837,6 +843,17 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                     HomeDashboardTile(tr("الأكثر تشغيلًا", "Most played"), popular.size.toString(), Icons.Rounded.TrendingUp, popular.take(3), Modifier.weight(1f), th) { tab = "most" }
                                     HomeDashboardTile(tr("أُضيفت حديثاً", "Recently added"), recent.size.toString(), Icons.Rounded.LibraryAdd, recent.take(3), Modifier.weight(1f), th) { tab = "recent" }
+                                }
+                                Spacer(Modifier.height(10.dp))
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    HomeDashboardTile(tr("المفضلة", "Favorites"), favorites.size.toString(), Icons.Rounded.Favorite, favorites.take(3), Modifier.weight(1f), th) {
+                                        favoritesOnly = true
+                                        tab = "music"
+                                    }
+                                    HomeDashboardTile(tr("مزيجك الذكي", "Smart mix"), smartMix.size.toString(), Icons.Rounded.AutoAwesome, smartMix.take(3), Modifier.weight(1f), th) {
+                                        if (smartMix.isNotEmpty()) play(smartMix.first(), smartMix)
+                                        else Toast.makeText(ctx, tr("أضف ملفات موسيقية أولاً", "Add music files first"), Toast.LENGTH_SHORT).show()
+                                    }
                                 }
                                 Spacer(Modifier.height(10.dp))
                                 Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = th.panel), shape = RoundedCornerShape(18.dp)) {
