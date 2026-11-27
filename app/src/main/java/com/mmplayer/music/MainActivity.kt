@@ -437,7 +437,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                 } else {
                                     if (libraryLayout == "grid") {
                                         LazyVerticalGrid(
-                                            columns = GridCells.Fixed(2),
+                                            columns = GridCells.Fixed(3),
                                             modifier = Modifier.weight(1f).fillMaxWidth(),
                                             contentPadding = PaddingValues(vertical = 6.dp),
                                             horizontalArrangement = Arrangement.spacedBy(8.dp),
