@@ -663,9 +663,8 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                 Box(Modifier.fillMaxWidth().height(170.dp), contentAlignment = Alignment.Center) {
                                     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                                         Text("MMplayer", color = th.accent, fontSize = 46.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.5.sp)
-                                        Text("by MOKHALAD", color = th.secondaryText.copy(alpha = 0.88f), fontSize = 10.sp, fontWeight = FontWeight.Light, letterSpacing = 2.2.sp)
+                                        Text("by MOKHALAD", color = th.accent.copy(alpha = 0.78f), fontSize = 10.sp, fontWeight = FontWeight.Light, letterSpacing = 2.2.sp)
                                     }
-                                    Text(tr("مساحتك الصوتية", "YOUR AUDIO SPACE"), color = th.accent.copy(alpha = 0.82f), fontSize = 10.sp, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp), letterSpacing = 3.sp)
                                 }
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                     HomeDashboardTile(tr("الموسيقى", "Music"), visibleTracks.count { !it.quran }.toString(), Icons.Rounded.MusicNote, visibleTracks.filter { !it.quran }.take(3), Modifier.weight(1f), th) { tab = "music" }
