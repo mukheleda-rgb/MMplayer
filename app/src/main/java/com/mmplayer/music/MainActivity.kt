@@ -215,6 +215,10 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
     var dialog by remember { mutableStateOf("") }
     var equalizerDialog by remember { mutableStateOf(false) }
     var manual by remember { mutableStateOf(runCatching { val a = JSONArray(prefs.getString("manual_order", "[]") ?: "[]"); (0 until a.length()).map { a.getLong(it) } }.getOrDefault(emptyList())) }
+    var hiddenFolders by remember { mutableStateOf(runCatching { val a = JSONArray(prefs.getString("hidden_folders", "[]") ?: "[]"); (0 until a.length()).map { a.getString(it) }.toSet() }.getOrDefault(emptySet())) }
+    var showFoldersDialog by remember { mutableStateOf(false) }
+    val folderCounts = tracks.groupingBy { it.path.substringBeforeLast('/', "").ifBlank { "Unknown folder" } }.eachCount().toSortedMap()
+    val visibleTracks = tracks.filter { it.path.substringBeforeLast('/', "").ifBlank { "Unknown folder" } !in hiddenFolders }
     val th = appThemes[themeNo]
     val ar = lang == "ar"
     fun tr(a: String, e: String) = if (ar) a else e
@@ -249,10 +253,10 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
     }
 
     val base = when (tab) {
-        "quran" -> tracks.filter { it.quran }
-        "music" -> tracks.filter { !it.quran }
-        "playlist" -> lists[activeList].orEmpty().mapNotNull { id -> tracks.firstOrNull { it.id == id } }
-        else -> tracks.filter { !it.quran }
+        "quran" -> visibleTracks.filter { it.quran }
+        "music" -> visibleTracks.filter { !it.quran }
+        "playlist" -> lists[activeList].orEmpty().mapNotNull { id -> visibleTracks.firstOrNull { it.id == id } }
+        else -> visibleTracks.filter { !it.quran }
     }
     val filtered = base.filter { it.title.contains(search, true) || it.artist.contains(search, true) }
     val shown = when (sort) {
@@ -291,7 +295,14 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                         "settings" -> {
                             Text(tr("اللغة", "Language"), color = Color.White, fontWeight = FontWeight.Bold)
                             Row { FilterChip(selected = ar, onClick = { lang = "ar"; prefs.edit().putString("lang", lang).apply() }, label = { Text("العربية") }); Spacer(Modifier.width(8.dp)); FilterChip(selected = !ar, onClick = { lang = "en"; prefs.edit().putString("lang", lang).apply() }, label = { Text("English") }) }
-                            Text(tr("الثيمات — 10 تصاميم", "Themes — 10 designs"), color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 18.dp, bottom = 8.dp))
+                            Row(Modifier.fillMaxWidth().padding(top = 18.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
+                                Column(Modifier.weight(1f)) {
+                                    Text(tr("إظهار وإخفاء المجلدات", "Folder visibility"), color = Color.White, fontWeight = FontWeight.Bold)
+                                    Text(tr("إخفاء ملفات مجلدات محددة مثل WhatsApp", "Hide audio files from selected folders, e.g. WhatsApp"), color = Color.LightGray, fontSize = 11.sp)
+                                }
+                                TextButton(onClick = { showFoldersDialog = true }) { Text(tr("إدارة", "Manage")) }
+                            }
+                            Text(tr("الثيمات — 10 تصاميم", "Themes — 10 designs"), color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 10.dp, bottom = 8.dp))
                             appThemes.forEachIndexed { i, item -> Row(Modifier.fillMaxWidth().padding(vertical = 4.dp).clip(RoundedCornerShape(13.dp)).background(th.panel).clickable { themeNo = i; prefs.edit().putInt("theme", i).apply() }.padding(12.dp), verticalAlignment = Alignment.CenterVertically) { Box(Modifier.size(28.dp).clip(CircleShape).background(item.accent)); Text(item.name, color = Color.White, modifier = Modifier.weight(1f).padding(horizontal = 12.dp)); if (themeNo == i) Icon(Icons.Rounded.Check, null, tint = th.accent) } }
                         }
                         "lists" -> {
@@ -309,7 +320,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                 Tile(tr("القرآن", "Quran"), tracks.count { it.quran }.toString(), Icons.Rounded.MenuBook, Modifier.weight(1f), th) { tab = "quran" }
                             }
                             Text(tr("أُضيفت مؤخراً", "Recently added"), color = Color.White, fontSize = 18.sp, modifier = Modifier.padding(vertical = 12.dp))
-                            TrackRows(tracks.sortedByDescending { it.added }.take(12), current, th, { play(it, tracks.filter { q -> q.quran == it.quran }) }, { selected = it }, { _, _ -> })
+                            TrackRows(visibleTracks.sortedByDescending { it.added }.take(12), current, th, { play(it, visibleTracks.filter { q -> q.quran == it.quran }) }, { selected = it }, { _, _ -> })
                         }
                         else -> {
                             if (tab == "playlist") Row(verticalAlignment = Alignment.CenterVertically) { Text(activeList, color = Color.White, modifier = Modifier.weight(1f)); IconButton(onClick = { exportFile.launch(activeList + ".m3u") }) { Icon(Icons.Rounded.FileDownload, null, tint = th.accent) } }
@@ -328,6 +339,46 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                 }
             }
         }
+    }
+    if (showFoldersDialog) {
+        AlertDialog(
+            onDismissRequest = { showFoldersDialog = false },
+            title = { Text(tr("إظهار وإخفاء المجلدات", "Show / hide folders")) },
+            text = {
+                Column(Modifier.fillMaxWidth()) {
+                    Text(
+                        tr("أوقف المفتاح لإخفاء جميع الملفات الصوتية داخل المجلد. يمكنك إظهارها مجدداً في أي وقت.", "Turn a switch off to hide all audio files in that folder. You can show them again at any time."),
+                        color = Color.Gray,
+                        fontSize = 12.sp
+                    )
+                    Spacer(Modifier.height(8.dp))
+                    if (folderCounts.isEmpty()) {
+                        Text(tr("لم يتم العثور على مجلدات. حدّث مكتبة الصوت أولاً.", "No folders found. Refresh the audio library first."))
+                    } else {
+                        LazyColumn(Modifier.heightIn(max = 420.dp)) {
+                            items(folderCounts.entries.toList(), key = { it.key }) { entry ->
+                                val path = entry.key
+                                val label = path.substringAfterLast('/').ifBlank { path }
+                                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Column(Modifier.weight(1f)) {
+                                        Text(label, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(entry.value.toString() + " " + tr("ملف صوتي", "audio files"), color = Color.Gray, fontSize = 11.sp, maxLines = 1)
+                                    }
+                                    Switch(
+                                        checked = path !in hiddenFolders,
+                                        onCheckedChange = { show ->
+                                            hiddenFolders = if (show) hiddenFolders - path else hiddenFolders + path
+                                            prefs.edit().putString("hidden_folders", JSONArray(hiddenFolders.toList()).toString()).apply()
+                                        }
+                                    )
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { showFoldersDialog = false }) { Text(tr("تم", "Done")) } }
+        )
     }
     if (equalizerDialog) {
         AlertDialog(
