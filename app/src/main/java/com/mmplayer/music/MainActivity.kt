@@ -414,6 +414,34 @@ class MainActivity : ComponentActivity() {
     override fun onPause() { super.onPause(); if (::player.isInitialized) getSharedPreferences("mmplayer", 0).edit().putLong("last_track_id", current?.id ?: -1L).putLong("last_position_ms", player.currentPosition).apply() }
     override fun onDestroy() { equalizer?.release(); controllerFuture?.let { MediaController.releaseFuture(it) }; controllerFuture = null; super.onDestroy() }
 }
+@Composable
+private fun GlowingSectionTitle(title: String, th: AppTheme, modifier: Modifier = Modifier) {
+    val transition = rememberInfiniteTransition(label = "sectionTitleGlow")
+    val glow by transition.animateFloat(
+        initialValue = 0.35f,
+        targetValue = 1f,
+        animationSpec = infiniteRepeatable(tween(1900, easing = LinearEasing), RepeatMode.Reverse),
+        label = "sectionTitleGlowAlpha"
+    )
+    Box(modifier.height(58.dp), contentAlignment = Alignment.CenterStart) {
+        Text(
+            title,
+            style = androidx.compose.ui.text.TextStyle(
+                brush = Brush.linearGradient(listOf(th.accent, th.second, th.accent)),
+                shadow = androidx.compose.ui.graphics.Shadow(
+                    color = th.accent.copy(alpha = glow * 0.72f),
+                    blurRadius = 17f
+                )
+            ),
+            fontSize = 23.sp,
+            fontWeight = FontWeight.ExtraBold,
+            letterSpacing = 0.1.sp,
+            maxLines = 1,
+            overflow = TextOverflow.Ellipsis
+        )
+    }
+}
+
 private fun time(ms: Long) = String.format(Locale.getDefault(), "%d:%02d", ms / 60000, (ms / 1000) % 60)
 private fun sizeText(n: Long) = if (n >= 1048576) String.format(Locale.US, "%.1f MB", n / 1048576.0) else String.format(Locale.US, "%.0f KB", n / 1024.0)
 private fun getLists(c: Context): Map<String, List<Long>> = try {
@@ -594,8 +622,9 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                         }
                         "lists" -> {
                             Column(Modifier.fillMaxSize()) {
+                                GlowingSectionTitle(tr("قوائم التشغيل", "Playlists"), th, Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 12.dp))
                                 if (lists.isEmpty()) {
-                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                    Box(Modifier.weight(1f).fillMaxWidth(), contentAlignment = Alignment.Center) {
                                         Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(18.dp)) {
                                             Icon(Icons.Rounded.QueueMusic, null, tint = th.accent, modifier = Modifier.size(76.dp))
                                             Text(tr("لا توجد قوائم تشغيل بعد", "No playlists yet"), color = primaryText, fontSize = 20.sp, fontWeight = FontWeight.Bold)
@@ -702,7 +731,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                 Box(Modifier.fillMaxWidth().height(170.dp), contentAlignment = Alignment.Center) {
                                     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
                                         Text(
-                                            "مساحتك الصوتية MMplayer",
+                                            "MMplayer",
                                             style = androidx.compose.ui.text.TextStyle(
                                                 brush = Brush.linearGradient(listOf(th.accent, th.second, th.accent)),
                                                 shadow = androidx.compose.ui.graphics.Shadow(
@@ -714,19 +743,37 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                             fontWeight = FontWeight.ExtraBold,
                                             letterSpacing = 0.1.sp
                                         )
-                                        Text(
-                                            "by MOKHALAD",
-                                            style = androidx.compose.ui.text.TextStyle(
-                                                brush = Brush.linearGradient(listOf(th.second, th.accent)),
-                                                shadow = androidx.compose.ui.graphics.Shadow(
-                                                    color = th.second.copy(alpha = brandGlow * 0.55f),
-                                                    blurRadius = 12f
-                                                )
-                                            ),
-                                            fontSize = 10.sp,
-                                            fontWeight = FontWeight.Light,
-                                            letterSpacing = 2.2.sp
-                                        )
+                                        Row(
+                                            verticalAlignment = Alignment.CenterVertically,
+                                            horizontalArrangement = Arrangement.spacedBy(9.dp)
+                                        ) {
+                                            Text(
+                                                "مساحتك الصوتية",
+                                                style = androidx.compose.ui.text.TextStyle(
+                                                    brush = Brush.linearGradient(listOf(th.accent, th.second)),
+                                                    shadow = androidx.compose.ui.graphics.Shadow(
+                                                        color = th.accent.copy(alpha = brandGlow * 0.5f),
+                                                        blurRadius = 9f
+                                                    )
+                                                ),
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Medium,
+                                                letterSpacing = 0.1.sp
+                                            )
+                                            Text(
+                                                "by MOKHALAD",
+                                                style = androidx.compose.ui.text.TextStyle(
+                                                    brush = Brush.linearGradient(listOf(th.second, th.accent)),
+                                                    shadow = androidx.compose.ui.graphics.Shadow(
+                                                        color = th.second.copy(alpha = brandGlow * 0.55f),
+                                                        blurRadius = 10f
+                                                    )
+                                                ),
+                                                fontSize = 10.sp,
+                                                fontWeight = FontWeight.Light,
+                                                letterSpacing = 1.7.sp
+                                            )
+                                        }
                                     }
                                 }
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -762,6 +809,10 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                         "recent" -> TrackRows(visibleTracks.sortedByDescending { it.added }.take(10), current, th, { play(it, visibleTracks.filter { q -> q.quran == it.quran }) }, { selected = it }, { _, _ -> })
                         else -> {
                             Column(Modifier.fillMaxSize()) {
+                                if (activeTab == "music" || activeTab == "quran") {
+                                    val sectionTitle = if (activeTab == "quran") tr("القرآن الكريم", "The Holy Quran") else tr("الملفات الموسيقية", "Music Library")
+                                    GlowingSectionTitle(sectionTitle, th, Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 10.dp))
+                                }
                                 if (activeTab == "playlist") {
                                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                         Text(activeList, color = primaryText, modifier = Modifier.weight(1f))
