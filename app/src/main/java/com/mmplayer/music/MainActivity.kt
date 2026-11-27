@@ -127,7 +127,7 @@ class MainActivity : ComponentActivity() {
                 override fun onIsPlayingChanged(isPlaying: Boolean) { playing = isPlaying }
             })
             setContent {
-                MMApp(tracks, current, playing, activeQueue, { track, queue -> play(track, queue) }, { toggle() }, { step(1) }, { step(-1) }, { refreshLibrary() }, libraryMessage, repeatMode, { cycleRepeat() }, shuffleEnabled, { toggleShuffle() }, equalizerEnabled, equalizerLevels, equalizerRange, { updateEqualizerEnabled(it) }, { band, level -> setEqualizerBand(band, level) }, currentPositionMs)
+                MMApp(tracks, current, playing, activeQueue, { track, queue -> play(track, queue) }, { toggle() }, { step(1) }, { step(-1) }, { refreshLibrary() }, libraryMessage, repeatMode, { cycleRepeat() }, shuffleEnabled, { toggleShuffle() }, equalizerEnabled, equalizerLevels, equalizerRange, { updateEqualizerEnabled(it) }, { band, level -> setEqualizerBand(band, level) }, currentPositionMs, { position -> if (player.mediaItemCount > 0) player.seekTo(position.coerceIn(0L, player.duration.coerceAtLeast(0L))) })
             }
             refreshLibrary()
             val ticker = android.os.Handler(mainLooper)
@@ -234,7 +234,7 @@ private fun getLists(c: Context): Map<String, List<Long>> = try {
 private fun putLists(c: Context, m: Map<String, List<Long>>) { val j = JSONObject(); m.forEach { (k, v) -> j.put(k, JSONArray(v)) }; c.getSharedPreferences("mmplayer", 0).edit().putString("lists", j.toString()).apply() }
 
 @Composable
-private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, playerQueue: List<Track>, play: (Track, List<Track>) -> Unit, toggle: () -> Unit, next: () -> Unit, previous: () -> Unit, refresh: () -> Unit, libraryMessage: String, repeatMode: Int, cycleRepeat: () -> Unit, shuffleEnabled: Boolean, toggleShuffle: () -> Unit, equalizerEnabled: Boolean, equalizerLevels: List<Int>, equalizerRange: IntRange, setEqualizerEnabled: (Boolean) -> Unit, setEqualizerBand: (Int, Int) -> Unit, currentPositionMs: Long) {
+private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, playerQueue: List<Track>, play: (Track, List<Track>) -> Unit, toggle: () -> Unit, next: () -> Unit, previous: () -> Unit, refresh: () -> Unit, libraryMessage: String, repeatMode: Int, cycleRepeat: () -> Unit, shuffleEnabled: Boolean, toggleShuffle: () -> Unit, equalizerEnabled: Boolean, equalizerLevels: List<Int>, equalizerRange: IntRange, setEqualizerEnabled: (Boolean) -> Unit, setEqualizerBand: (Int, Int) -> Unit, currentPositionMs: Long, seekTo: (Long) -> Unit) {
     val ctx = LocalContext.current
     val prefs = remember { ctx.getSharedPreferences("mmplayer", 0) }
     var lang by remember { mutableStateOf(prefs.getString("lang", "ar") ?: "ar") }
@@ -335,7 +335,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
             }
         }
         if (expanded && current != null) {
-            FullPlayer(current, playerQueue, playing, th, ar, playerEffect, playerTheme, { expanded = false }, toggle, next, previous, { play(it, playerQueue) }, repeatMode, cycleRepeat, shuffleEnabled, toggleShuffle, { equalizerDialog = true })
+            FullPlayer(current, playerQueue, playing, th, ar, playerEffect, playerTheme, currentPositionMs, { expanded = false }, toggle, next, previous, { play(it, playerQueue) }, { seekTo(it) }, repeatMode, cycleRepeat, shuffleEnabled, toggleShuffle, { equalizerDialog = true })
         } else {
             Scaffold(containerColor = th.bg, bottomBar = {
                 Column {
@@ -377,7 +377,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                             IconButton(onClick = refresh) { Icon(Icons.Rounded.Refresh, null, tint = Color.White) }
                         }
                     }
-                    AnimatedContent(targetState = tab, transitionSpec = {
+                    AnimatedContent(targetState = tab, modifier = Modifier.weight(1f).fillMaxWidth(), transitionSpec = {
                         val forward = tabKeys.indexOf(targetState) >= tabKeys.indexOf(initialState)
                         when (navigationEffect) {
                             "slide" -> (slideInHorizontally(tween(260)) { if (forward) it else -it } + fadeIn(tween(220))) togetherWith (slideOutHorizontally(tween(220)) { if (forward) -it / 3 else it / 3 } + fadeOut(tween(180)))
@@ -389,6 +389,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                     }, label = "tab-card-transition") { activeTab ->
                     when (activeTab) {
                         "settings" -> {
+                            Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                             Text(tr("الإعدادات", "Settings"), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp, modifier = Modifier.padding(bottom = 12.dp))
                             SettingsCategoryCard(tr("المظهر واللغة", "Appearance & language"), tr("اختيار اللغة ولون التطبيق والثيم", "Choose language, app color and theme"), Icons.Rounded.Palette, th) { settingsSection = "appearance" }
                             SettingsCategoryCard(tr("الخلفيات والمؤثرات", "Backgrounds & effects"), tr("صورة مستقلة لكل واجهة مع التحكم بالتعتيم والتمويه", "Separate image per tab with dim and blur controls"), Icons.Rounded.Wallpaper, th) { settingsSection = "backgrounds" }
@@ -397,6 +398,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                             SettingsCategoryCard(tr("مظهر المشغل والمؤثرات", "Player themes & effects"), tr("اختيار شكل المشغل وحركة تغيير الملفات", "Choose player style and track-change animation"), Icons.Rounded.GraphicEq, th) { settingsSection = "player" }
                             SettingsCategoryCard(tr("الصوت والتشغيل", "Audio & playback"), tr("الموازن الصوتي والتكرار والتشغيل العشوائي", "Equalizer, repeat and shuffle"), Icons.Rounded.Equalizer, th) { settingsSection = "playback" }
                             SettingsCategoryCard(tr("مكتبة الصوت", "Audio library"), tr("تحديث وفحص ملفات الصوت في الهاتف", "Refresh and scan audio files on your phone"), Icons.Rounded.LibraryMusic, th) { refresh() }
+                            }
                         }
                         "lists" -> {
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -458,7 +460,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                 } }
                             }
                             if (tracks.isEmpty() || libraryMessage.isNotBlank()) Text(libraryMessage, color = if (tracks.isEmpty()) th.second else Color.LightGray, fontSize = 12.sp, modifier = Modifier.padding(vertical = 6.dp))
-                            TrackRows(shown, current, th, { play(it, base) }, { selected = it }, { a, b -> val ids = shown.map { it.id }.toMutableList(); if (a in ids.indices && b in ids.indices) { val v = ids.removeAt(a); ids.add(b, v); manual = ids; prefs.edit().putString("manual_order", JSONArray(ids).toString()).apply(); sort = "manual" } })
+                            TrackRows(shown, current, th, { play(it, base) }, { selected = it }, { a, b -> val ids = shown.map { it.id }.toMutableList(); if (a in ids.indices && b in ids.indices) { val v = ids.removeAt(a); ids.add(b, v); manual = ids; prefs.edit().putString("manual_order", JSONArray(ids).toString()).apply(); sort = "manual" } }, Modifier.weight(1f))
                         }
                     }
                     }
@@ -646,7 +648,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
 }
 
 @Composable
-private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: AppTheme, ar: Boolean, playerEffect: String, playerTheme: String, close: () -> Unit, toggle: () -> Unit, next: () -> Unit, previous: () -> Unit, play: (Track) -> Unit, repeatMode: Int, cycleRepeat: () -> Unit, shuffleEnabled: Boolean, toggleShuffle: () -> Unit, openEqualizer: () -> Unit) {
+private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: AppTheme, ar: Boolean, playerEffect: String, playerTheme: String, currentPositionMs: Long, close: () -> Unit, toggle: () -> Unit, next: () -> Unit, previous: () -> Unit, play: (Track) -> Unit, seekTo: (Long) -> Unit, repeatMode: Int, cycleRepeat: () -> Unit, shuffleEnabled: Boolean, toggleShuffle: () -> Unit, openEqualizer: () -> Unit) {
     var dx by remember { mutableFloatStateOf(0f) }; var dy by remember { mutableFloatStateOf(0f) }
     val pulseTransition = rememberInfiniteTransition(label = "player-pulse")
     val pulseScale by pulseTransition.animateFloat(initialValue = 1f, targetValue = 1.035f, animationSpec = infiniteRepeatable(animation = tween(950), repeatMode = RepeatMode.Reverse), label = "cover-pulse")
@@ -673,7 +675,14 @@ private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: A
                 Text(animatedTrack.artist, color = Color.LightGray, modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             }
         }
-        Spacer(Modifier.height(20.dp))
+        Column(Modifier.fillMaxWidth()) {
+            Slider(value = currentPositionMs.coerceIn(0L, track.duration.coerceAtLeast(1L)).toFloat(), onValueChange = { seekTo(it.toLong()) }, valueRange = 0f..track.duration.coerceAtLeast(1L).toFloat(), colors = SliderDefaults.colors(thumbColor = th.accent, activeTrackColor = th.accent, inactiveTrackColor = Color.Gray.copy(alpha = 0.45f)))
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
+                Text(time(currentPositionMs), color = Color.LightGray, fontSize = 11.sp)
+                Text("-" + time((track.duration - currentPositionMs).coerceAtLeast(0L)) + " / " + time(track.duration), color = Color.LightGray, fontSize = 11.sp)
+            }
+        }
+        Spacer(Modifier.height(12.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
             IconButton(onClick = previous) { Icon(Icons.Rounded.SkipPrevious, null, tint = Color.White, modifier = Modifier.size(42.dp)) }
             IconButton(onClick = toggle, modifier = Modifier.padding(horizontal = 22.dp).size(66.dp).background(th.accent, CircleShape)) { Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null, tint = th.bg, modifier = Modifier.size(36.dp)) }
@@ -761,11 +770,11 @@ private fun Tile(title: String, count: String, icon: androidx.compose.ui.graphic
 }
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun TrackRows(rows: List<Track>, current: Track?, th: AppTheme, play: (Track) -> Unit, menu: (Track) -> Unit, move: (Int, Int) -> Unit) {
+private fun TrackRows(rows: List<Track>, current: Track?, th: AppTheme, play: (Track) -> Unit, menu: (Track) -> Unit, move: (Int, Int) -> Unit, modifier: Modifier = Modifier) {
     var draggingId by remember { mutableStateOf<Long?>(null) }
     val listState = rememberLazyListState()
     val currentMove by rememberUpdatedState(move)
-    LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(3.dp)) {
+    LazyColumn(modifier = modifier.fillMaxWidth(), state = listState, verticalArrangement = Arrangement.spacedBy(3.dp)) {
         items(rows, key = { it.id }) { t ->
             var dragOffset by remember(t.id) { mutableFloatStateOf(0f) }
             var dragIndex by remember(t.id) { mutableIntStateOf(rows.indexOfFirst { it.id == t.id }) }
