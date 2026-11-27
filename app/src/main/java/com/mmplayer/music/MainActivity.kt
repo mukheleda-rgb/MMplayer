@@ -481,7 +481,14 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
     var playCounts by remember { mutableStateOf(runCatching { val j = JSONObject(prefs.getString("play_counts", "{}") ?: "{}"); buildMap<Long, Int> { j.keys().forEach { put(it.toLong(), j.getInt(it)) } } }.getOrDefault(emptyMap())) }
     var favoriteIds by remember { mutableStateOf(runCatching { val a = JSONArray(prefs.getString("favorite_ids", "[]") ?: "[]"); (0 until a.length()).map { a.getLong(it) }.toSet() }.getOrDefault(emptySet())) }
     var favoritesOnly by remember { mutableStateOf(false) }
-    LaunchedEffect(current?.id) { current?.let { t -> playCounts = playCounts + (t.id to ((playCounts[t.id] ?: 0) + 1)); val j = JSONObject(); playCounts.forEach { (id, n) -> j.put(id.toString(), n) }; prefs.edit().putString("play_counts", j.toString()).putLong("last_track_id", t.id).apply() } }
+    var quranReciter by remember { mutableStateOf("") }
+    LaunchedEffect(current?.id) { current?.let { t ->
+        playCounts = playCounts + (t.id to ((playCounts[t.id] ?: 0) + 1))
+        val j = JSONObject(); playCounts.forEach { (id, n) -> j.put(id.toString(), n) }
+        val editor = prefs.edit().putString("play_counts", j.toString()).putLong("last_track_id", t.id)
+        if (t.quran) editor.putLong("last_quran_track_id", t.id)
+        editor.apply()
+    } }
     var hiddenFolders by remember { mutableStateOf(runCatching { val a = JSONArray(prefs.getString("hidden_folders", "[]") ?: "[]"); (0 until a.length()).map { a.getString(it) }.toSet() }.getOrDefault(emptySet())) }
     var showFoldersDialog by remember { mutableStateOf(false) }
     var settingsSection by remember { mutableStateOf("") }
@@ -597,7 +604,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                         "playlist" -> lists[activeList].orEmpty().mapNotNull { id -> visibleTracks.firstOrNull { it.id == id } }
                         else -> visibleTracks.filter { !it.quran }
                     } }
-                    val pageFiltered = remember(pageBase, search, favoritesOnly, favoriteIds) { pageBase.filter { (it.title.contains(search, true) || it.artist.contains(search, true)) && (!favoritesOnly || it.id in favoriteIds) } }
+                    val pageFiltered = remember(pageBase, search, favoritesOnly, favoriteIds, quranReciter, activeTab) { pageBase.filter { (it.title.contains(search, true) || it.artist.contains(search, true)) && (!favoritesOnly || it.id in favoriteIds) && (activeTab != "quran" || quranReciter.isBlank() || it.artist == quranReciter) } }
                     val pageShown = remember(pageFiltered, sort, manual, playCounts) { when (sort) {
                         "name" -> pageFiltered.sortedBy { it.title.lowercase() }
                         "artist" -> pageFiltered.sortedBy { it.artist.lowercase() }
@@ -818,6 +825,33 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                 if (activeTab == "music" || activeTab == "quran") {
                                     val sectionTitle = if (activeTab == "quran") tr("القرآن الكريم", "The Holy Quran") else tr("الملفات الموسيقية", "Music Library")
                                     GlowingSectionTitle(sectionTitle, th, Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 10.dp))
+                                    if (activeTab == "quran") {
+                                        val lastQuran = pageBase.firstOrNull { it.id == prefs.getLong("last_quran_track_id", -1L) }
+                                        if (lastQuran != null) {
+                                            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(15.dp)).background(th.panel).clickable { play(lastQuran, pageBase) }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                                Art(lastQuran, Modifier.size(46.dp), th)
+                                                Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
+                                                    Text(tr("متابعة الاستماع", "Continue listening"), color = th.accent, fontSize = 11.sp, fontWeight = FontWeight.Bold)
+                                                    Text(lastQuran.title, color = primaryText, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 13.sp)
+                                                    Text(lastQuran.artist, color = secondaryText, maxLines = 1, fontSize = 10.sp)
+                                                }
+                                                Icon(Icons.Rounded.PlayCircleFilled, null, tint = th.accent, modifier = Modifier.size(30.dp))
+                                            }
+                                            Spacer(Modifier.height(8.dp))
+                                        }
+                                        val reciters = pageBase.map { it.artist.trim() }.filter { it.isNotBlank() }.distinct().sorted()
+                                        if (reciters.size > 1) {
+                                            Text(tr("القارئ", "Reciter"), color = secondaryText, fontSize = 11.sp, modifier = Modifier.padding(bottom = 4.dp))
+                                            LazyRow(horizontalArrangement = Arrangement.spacedBy(6.dp), contentPadding = PaddingValues(bottom = 7.dp)) {
+                                                item {
+                                                    FilterChip(selected = quranReciter.isBlank(), onClick = { quranReciter = "" }, label = { Text(tr("الكل", "All")) })
+                                                }
+                                                items(reciters) { reciter ->
+                                                    FilterChip(selected = quranReciter == reciter, onClick = { quranReciter = if (quranReciter == reciter) "" else reciter }, label = { Text(reciter, maxLines = 1) })
+                                                }
+                                            }
+                                        }
+                                    }
                                 }
                                 if (activeTab == "playlist") {
                                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
