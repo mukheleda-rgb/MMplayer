@@ -4,6 +4,7 @@ import android.Manifest
 import android.app.Activity
 import android.app.RecoverableSecurityException
 import android.media.audiofx.Equalizer
+import android.provider.OpenableColumns
 import android.content.ContentUris
 import android.content.ComponentName
 import android.content.Context
@@ -144,6 +145,7 @@ class MainActivity : ComponentActivity() {
     private var legacyDeleteItems: List<Track> = emptyList()
     private var legacyDeleteIndex = 0
     private var waitingLegacyDelete: Pair<List<Track>, (Boolean) -> Unit>? = null
+    private var pendingExternalUri: Uri? = null
     private val legacyWritePermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
         val pending = waitingLegacyDelete
         waitingLegacyDelete = null
@@ -172,6 +174,7 @@ class MainActivity : ComponentActivity() {
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        pendingExternalUri = externalAudioUri(intent)
         tracks = loadCachedTracks()
         if (tracks.isNotEmpty()) libraryMessage = "تم تحميل " + tracks.size + " ملف من الذاكرة المحفوظة"
         artworkLoader = ImageLoader.Builder(applicationContext)
@@ -189,6 +192,7 @@ class MainActivity : ComponentActivity() {
         future.addListener({
             if (isFinishing || isDestroyed) return@addListener
             player = future.get()
+            pendingExternalUri?.let { uri -> pendingExternalUri = null; openExternalAudio(uri) }
             player.addListener(object : Player.Listener {
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                     current = activeQueue.getOrNull(player.currentMediaItemIndex)
@@ -211,6 +215,42 @@ class MainActivity : ComponentActivity() {
             ticker.post(tick)
         }, ContextCompat.getMainExecutor(this))
     }
+
+    @Suppress("DEPRECATION")
+    private fun externalAudioUri(source: Intent?): Uri? {
+        if (source == null) return null
+        return when (source.action) {
+            Intent.ACTION_VIEW -> source.data
+            Intent.ACTION_SEND -> if (Build.VERSION.SDK_INT >= 33) source.getParcelableExtra(Intent.EXTRA_STREAM, Uri::class.java) else source.getParcelableExtra(Intent.EXTRA_STREAM) as? Uri
+            else -> null
+        }
+    }
+
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        externalAudioUri(intent)?.let { uri ->
+            if (::player.isInitialized) openExternalAudio(uri) else pendingExternalUri = uri
+        }
+    }
+
+    private fun openExternalAudio(uri: Uri) {
+        try {
+            try { contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) } catch (_: Exception) { }
+            val displayName = contentResolver.query(uri, arrayOf(OpenableColumns.DISPLAY_NAME), null, null, null)?.use { cursor ->
+                if (cursor.moveToFirst()) cursor.getString(cursor.getColumnIndexOrThrow(OpenableColumns.DISPLAY_NAME)) else null
+            } ?: uri.lastPathSegment?.substringAfterLast('/') ?: "Audio"
+            val title = displayName.substringBeforeLast('.', displayName).ifBlank { "Audio" }
+            val stableId = -kotlin.math.abs(uri.toString().hashCode().toLong()) - 1L
+            val item = Track(stableId, title, "ملف خارجي", uri, 0L, false, 0L, 0L, System.currentTimeMillis() / 1000L, "")
+            tracks = (tracks.filterNot { it.id == stableId } + item)
+            play(item, listOf(item))
+            Toast.makeText(this, "يتم تشغيل الملف من التطبيق الخارجي", Toast.LENGTH_SHORT).show()
+        } catch (e: Exception) {
+            Toast.makeText(this, e.localizedMessage ?: "تعذر فتح الملف الصوتي", Toast.LENGTH_LONG).show()
+        }
+    }
+
     private fun requestDeleteTracks(items: List<Track>, onResult: (Boolean) -> Unit) {
         val targets = items.distinctBy { it.id }
         if (targets.isEmpty()) { onResult(false); return }
