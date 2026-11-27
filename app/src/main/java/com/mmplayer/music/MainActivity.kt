@@ -706,7 +706,13 @@ private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: A
         Box(Modifier.fillMaxWidth().padding(top = 14.dp), contentAlignment = Alignment.Center) { Box(Modifier.width(42.dp).height(5.dp).clip(CircleShape).background(Color.Gray)) }
         Row(Modifier.fillMaxWidth().padding(vertical = 15.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(onClick = close) { Icon(Icons.Rounded.KeyboardArrowDown, null, tint = Color.White) }; Text(if (ar) "قيد التشغيل" else "Now playing", color = Color.White, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center); Icon(Icons.Rounded.MoreHoriz, null, tint = Color.White) }
         Spacer(Modifier.weight(0.3f))
-        Art(track, Modifier.fillMaxWidth().aspectRatio(1f).padding(horizontal = 18.dp), th)
+        if (playerTheme == "3d") {
+            Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp).shadow(20.dp, RoundedCornerShape(26.dp)).background(Brush.linearGradient(listOf(Color(0xFF303642), Color(0xFF11141B))), RoundedCornerShape(26.dp)).border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(26.dp)).padding(9.dp)) {
+                Art(track, Modifier.fillMaxWidth().aspectRatio(1f), th)
+            }
+        } else {
+            Art(track, Modifier.fillMaxWidth().aspectRatio(1f).padding(horizontal = 18.dp), th)
+        }
         Spacer(Modifier.height(24.dp))
         AnimatedContent(targetState = track, transitionSpec = {
             when (playerEffect) {
@@ -736,9 +742,17 @@ private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: A
         }
         Spacer(Modifier.height(12.dp))
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.Center, verticalAlignment = Alignment.CenterVertically) {
-            IconButton(onClick = previous) { Icon(Icons.Rounded.SkipPrevious, null, tint = Color.White, modifier = Modifier.size(42.dp)) }
-            IconButton(onClick = toggle, modifier = Modifier.padding(horizontal = 22.dp).size(66.dp).background(th.accent, CircleShape)) { Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null, tint = th.bg, modifier = Modifier.size(36.dp)) }
-            IconButton(onClick = next) { Icon(Icons.Rounded.SkipNext, null, tint = Color.White, modifier = Modifier.size(42.dp)) }
+            if (playerTheme == "3d") {
+                NeumorphicPlayerButton(Icons.Rounded.SkipPrevious, if (ar) "السابق" else "Previous", previous, th, Modifier.size(62.dp))
+                Spacer(Modifier.width(22.dp))
+                NeumorphicPlayerButton(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, if (playing) "إيقاف مؤقت" else "تشغيل", toggle, th, Modifier.size(78.dp), primary = true)
+                Spacer(Modifier.width(22.dp))
+                NeumorphicPlayerButton(Icons.Rounded.SkipNext, if (ar) "التالي" else "Next", next, th, Modifier.size(62.dp))
+            } else {
+                IconButton(onClick = previous) { Icon(Icons.Rounded.SkipPrevious, null, tint = Color.White, modifier = Modifier.size(42.dp)) }
+                IconButton(onClick = toggle, modifier = Modifier.padding(horizontal = 22.dp).size(66.dp).background(th.accent, CircleShape)) { Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null, tint = th.bg, modifier = Modifier.size(36.dp)) }
+                IconButton(onClick = next) { Icon(Icons.Rounded.SkipNext, null, tint = Color.White, modifier = Modifier.size(42.dp)) }
+            }
         }
         Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
             TextButton(onClick = toggleShuffle) {
@@ -919,5 +933,30 @@ private fun DefaultCoverArtwork(track: Track, modifier: Modifier, th: AppTheme) 
             }
         }
         Icon(if (track.quran) Icons.Rounded.MenuBook else Icons.Rounded.MusicNote, contentDescription = null, tint = Color.White, modifier = Modifier.size( if (track.quran) 38.dp else 42.dp ))
+    }
+}
+
+@Composable
+private fun NeumorphicPlayerButton(
+    icon: androidx.compose.ui.graphics.vector.ImageVector,
+    description: String,
+    onClick: () -> Unit,
+    th: AppTheme,
+    modifier: Modifier = Modifier,
+    primary: Boolean = false
+) {
+    val shape = CircleShape
+    val face = if (primary) Brush.linearGradient(listOf(th.accent, th.accent.copy(alpha = 0.72f))) else Brush.linearGradient(listOf(Color(0xFF303642), Color(0xFF171B23)))
+    Box(
+        modifier
+            .shadow(if (primary) 18.dp else 12.dp, shape)
+            .clip(shape)
+            .background(face)
+            .border(1.dp, if (primary) Color.White.copy(alpha = 0.35f) else Color.White.copy(alpha = 0.12f), shape)
+            .clickable(onClick = onClick),
+        contentAlignment = Alignment.Center
+    ) {
+        Box(Modifier.fillMaxSize().padding(3.dp).border(1.dp, Color.Black.copy(alpha = if (primary) 0.06f else 0.25f), shape))
+        Icon(icon, contentDescription = description, tint = if (primary) Color(0xFF10141B) else Color(0xFFE5EAF3), modifier = Modifier.size(if (primary) 38.dp else 30.dp))
     }
 }
