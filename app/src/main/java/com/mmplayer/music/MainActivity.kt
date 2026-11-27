@@ -40,6 +40,8 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.blur
+import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
@@ -83,6 +85,7 @@ class MainActivity : ComponentActivity() {
     private var repeatMode by mutableIntStateOf(Player.REPEAT_MODE_OFF)
     private var shuffleEnabled by mutableStateOf(false)
     private var equalizer: Equalizer? = null
+    private var currentPositionMs by mutableLongStateOf(0L)
     private var equalizerLevels by mutableStateOf(listOf<Int>())
     private var equalizerEnabled by mutableStateOf(false)
     private var equalizerRange by mutableStateOf(-1500..1500)
@@ -105,9 +108,12 @@ class MainActivity : ComponentActivity() {
             }
         })
         setContent {
-            MMApp(tracks, current, playing, activeQueue, { track, queue -> play(track, queue) }, { toggle() }, { step(1) }, { step(-1) }, { refreshLibrary() }, libraryMessage, repeatMode, { cycleRepeat() }, shuffleEnabled, { toggleShuffle() }, equalizerEnabled, equalizerLevels, equalizerRange, { updateEqualizerEnabled(it) }, { band, level -> setEqualizerBand(band, level) })
+            MMApp(tracks, current, playing, activeQueue, { track, queue -> play(track, queue) }, { toggle() }, { step(1) }, { step(-1) }, { refreshLibrary() }, libraryMessage, repeatMode, { cycleRepeat() }, shuffleEnabled, { toggleShuffle() }, equalizerEnabled, equalizerLevels, equalizerRange, { updateEqualizerEnabled(it) }, { band, level -> setEqualizerBand(band, level) }, currentPositionMs)
         }
         refreshLibrary()
+        val ticker = android.os.Handler(mainLooper)
+        val tick = object : Runnable { override fun run() { if (!isFinishing) { currentPositionMs = if (player.mediaItemCount > 0) player.currentPosition else currentPositionMs; ticker.postDelayed(this, 500) } } }
+        ticker.post(tick)
     }
     private fun refreshLibrary() {
         val p = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
@@ -189,6 +195,7 @@ class MainActivity : ComponentActivity() {
             equalizerLevels = equalizerLevels.toMutableList().also { if (band in it.indices) it[band] = level }
         } catch (_: Exception) { }
     }
+    override fun onPause() { super.onPause(); getSharedPreferences("mmplayer", 0).edit().putLong("last_track_id", current?.id ?: -1L).putLong("last_position_ms", player.currentPosition).apply() }
     override fun onDestroy() { equalizer?.release(); player.release(); super.onDestroy() }
 }
 private fun time(ms: Long) = String.format(Locale.getDefault(), "%d:%02d", ms / 60000, (ms / 1000) % 60)
@@ -200,7 +207,7 @@ private fun getLists(c: Context): Map<String, List<Long>> = try {
 private fun putLists(c: Context, m: Map<String, List<Long>>) { val j = JSONObject(); m.forEach { (k, v) -> j.put(k, JSONArray(v)) }; c.getSharedPreferences("mmplayer", 0).edit().putString("lists", j.toString()).apply() }
 
 @Composable
-private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, playerQueue: List<Track>, play: (Track, List<Track>) -> Unit, toggle: () -> Unit, next: () -> Unit, previous: () -> Unit, refresh: () -> Unit, libraryMessage: String, repeatMode: Int, cycleRepeat: () -> Unit, shuffleEnabled: Boolean, toggleShuffle: () -> Unit, equalizerEnabled: Boolean, equalizerLevels: List<Int>, equalizerRange: IntRange, setEqualizerEnabled: (Boolean) -> Unit, setEqualizerBand: (Int, Int) -> Unit) {
+private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, playerQueue: List<Track>, play: (Track, List<Track>) -> Unit, toggle: () -> Unit, next: () -> Unit, previous: () -> Unit, refresh: () -> Unit, libraryMessage: String, repeatMode: Int, cycleRepeat: () -> Unit, shuffleEnabled: Boolean, toggleShuffle: () -> Unit, equalizerEnabled: Boolean, equalizerLevels: List<Int>, equalizerRange: IntRange, setEqualizerEnabled: (Boolean) -> Unit, setEqualizerBand: (Int, Int) -> Unit, currentPositionMs: Long) {
     val ctx = LocalContext.current
     val prefs = remember { ctx.getSharedPreferences("mmplayer", 0) }
     var lang by remember { mutableStateOf(prefs.getString("lang", "ar") ?: "ar") }
@@ -220,6 +227,18 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
     LaunchedEffect(current?.id) { current?.let { t -> playCounts = playCounts + (t.id to ((playCounts[t.id] ?: 0) + 1)); val j = JSONObject(); playCounts.forEach { (id, n) -> j.put(id.toString(), n) }; prefs.edit().putString("play_counts", j.toString()).putLong("last_track_id", t.id).apply() } }
     var hiddenFolders by remember { mutableStateOf(runCatching { val a = JSONArray(prefs.getString("hidden_folders", "[]") ?: "[]"); (0 until a.length()).map { a.getString(it) }.toSet() }.getOrDefault(emptySet())) }
     var showFoldersDialog by remember { mutableStateOf(false) }
+    var backgroundPickerTab by remember { mutableStateOf("home") }
+    val tabKeys = listOf("home", "music", "quran", "lists", "settings")
+    val tabBackgrounds = remember { mutableStateMapOf<String, String>().apply { tabKeys.forEach { put(it, prefs.getString("bg_" + it, "") ?: "") } } }
+    val tabDim = remember { mutableStateMapOf<String, Float>().apply { tabKeys.forEach { put(it, prefs.getFloat("dim_" + it, 0.42f)) } } }
+    val tabBlur = remember { mutableStateMapOf<String, Float>().apply { tabKeys.forEach { put(it, prefs.getFloat("blur_" + it, 0f)) } } }
+    val backgroundPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
+        if (uri != null) try {
+            ctx.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
+            tabBackgrounds[backgroundPickerTab] = uri.toString()
+            prefs.edit().putString("bg_" + backgroundPickerTab, uri.toString()).apply()
+        } catch (_: Exception) { Toast.makeText(ctx, tr("تعذر حفظ الصورة", "Could not save image"), Toast.LENGTH_SHORT).show() }
+    }
     val folderCounts = tracks.groupingBy { it.path.substringBeforeLast('/', "").ifBlank { "Unknown folder" } }.eachCount().toSortedMap()
     val visibleTracks = tracks.filter { it.path.substringBeforeLast('/', "").ifBlank { "Unknown folder" } !in hiddenFolders }
     val th = appThemes[themeNo]
@@ -289,13 +308,29 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                     }
                 }
             }) { pad ->
-                Column(Modifier.fillMaxSize().animateContentSize(tween(260)).padding(pad).padding(horizontal = 16.dp)) {
+                Box(Modifier.fillMaxSize()) {
+                    val bg = tabBackgrounds[tab].orEmpty()
+                    if (bg.isNotBlank()) AsyncImage(model = Uri.parse(bg), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().blur((tabBlur[tab] ?: 0f).dp))
+                    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = tabDim[tab] ?: 0.42f)))
+                    Column(Modifier.fillMaxSize().animateContentSize(tween(260)).padding(pad).padding(horizontal = 16.dp)) {
                     Row(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) { Text("MMplayer", color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.Bold); Text(when (tab) { "settings" -> tr("الإعدادات", "Settings"); "quran" -> tr("مكتبة القرآن", "Quran library"); "music" -> tr("مكتبة الموسيقى", "Music library"); "lists" -> tr("قوائم التشغيل", "Playlists"); else -> tr("مساحتك الصوتية", "Your audio space") }, color = th.accent) }
                         IconButton(onClick = refresh) { Icon(Icons.Rounded.Refresh, null, tint = Color.White) }
                     }
                     when (tab) {
                         "settings" -> {
+                            Text(tr("خلفية كل واجهة", "Background for each tab"), color = Color.White, fontWeight = FontWeight.Bold)
+                            tabKeys.forEach { key ->
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(if (ar) mapOf("home" to "الرئيسية", "music" to "الموسيقى", "quran" to "القرآن", "lists" to "القوائم", "settings" to "الإعدادات")[key].orEmpty() else key, color = Color.White, modifier = Modifier.weight(1f))
+                                    TextButton(onClick = { backgroundPickerTab = key; backgroundPicker.launch(arrayOf("image/*")) }) { Text(tr("اختيار صورة", "Choose image")) }
+                                    if (tabBackgrounds[key].orEmpty().isNotBlank()) IconButton(onClick = { tabBackgrounds[key] = ""; prefs.edit().remove("bg_" + key).apply() }) { Icon(Icons.Rounded.Delete, null, tint = th.second) }
+                                }
+                            }
+                            Text(tr("تعتيم الخلفية", "Dim amount"), color = Color.White, fontSize = 12.sp)
+                            Slider(value = tabDim[tab] ?: 0.42f, onValueChange = { tabDim[tab] = it; prefs.edit().putFloat("dim_" + tab, it).apply() }, valueRange = 0f..0.9f)
+                            Text(tr("تمويه الخلفية", "Blur amount"), color = Color.White, fontSize = 12.sp)
+                            Slider(value = tabBlur[tab] ?: 0f, onValueChange = { tabBlur[tab] = it; prefs.edit().putFloat("blur_" + tab, it).apply() }, valueRange = 0f..24f)
                             Text(tr("اللغة", "Language"), color = Color.White, fontWeight = FontWeight.Bold)
                             Row { FilterChip(selected = ar, onClick = { lang = "ar"; prefs.edit().putString("lang", lang).apply() }, label = { Text("العربية") }); Spacer(Modifier.width(8.dp)); FilterChip(selected = !ar, onClick = { lang = "en"; prefs.edit().putString("lang", lang).apply() }, label = { Text("English") }) }
                             Row(Modifier.fillMaxWidth().padding(top = 18.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -372,6 +407,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                         }
                     }
                 }
+                    }
             }
         }
     }
@@ -554,15 +590,10 @@ private fun TrackRows(rows: List<Track>, current: Track?, th: AppTheme, play: (T
                     .background(
                         when {
                             isDragging -> th.accent.copy(alpha = 0.32f)
-                            current?.id == t.id -> th.accent.copy(alpha = 0.16f)
+                            current?.id == t.id -> th.accent.copy(alpha = 0.24f)
                             else -> Color.Transparent
                         }
                     )
-                    .border(
-                        if (isDragging || current?.id == t.id) 2.dp else 0.dp,
-                        if (isDragging) th.accent else if (current?.id == t.id) th.accent else Color.Transparent,
-                        RoundedCornerShape(12.dp)
-                    ),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(Modifier.weight(1f).pointerInput(t.id) {
