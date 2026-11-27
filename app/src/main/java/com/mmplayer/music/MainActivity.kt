@@ -3,6 +3,7 @@ package com.mmplayer.music
 import android.Manifest
 import android.media.audiofx.Equalizer
 import android.content.ContentUris
+import android.content.ComponentName
 import android.content.Context
 import android.content.pm.PackageManager
 import android.database.Cursor
@@ -56,8 +57,10 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
+import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
-import androidx.media3.exoplayer.ExoPlayer
+import androidx.media3.session.MediaController
+import androidx.media3.session.SessionToken
 import coil.compose.AsyncImage
 import org.json.JSONArray
 import org.json.JSONObject
@@ -81,7 +84,8 @@ private val appThemes = listOf(
 )
 
 class MainActivity : ComponentActivity() {
-    private lateinit var player: ExoPlayer
+    private lateinit var player: MediaController
+    private var controllerFuture: com.google.common.util.concurrent.ListenableFuture<MediaController>? = null
     private var tracks by mutableStateOf(listOf<Track>())
     private var current by mutableStateOf<Track?>(null)
     private var playing by mutableStateOf(false)
@@ -102,22 +106,33 @@ class MainActivity : ComponentActivity() {
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
-        player = ExoPlayer.Builder(this).build()
-        player.addListener(object : Player.Listener {
-            override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
-                current = activeQueue.getOrNull(player.currentMediaItemIndex)
+        val token = SessionToken(this, ComponentName(this, PlaybackService::class.java))
+        val future = MediaController.Builder(this, token).buildAsync()
+        controllerFuture = future
+        future.addListener({
+            if (isFinishing || isDestroyed) return@addListener
+            player = future.get()
+            player.addListener(object : Player.Listener {
+                override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                    current = activeQueue.getOrNull(player.currentMediaItemIndex)
+                }
+                override fun onIsPlayingChanged(isPlaying: Boolean) { playing = isPlaying }
+            })
+            setContent {
+                MMApp(tracks, current, playing, activeQueue, { track, queue -> play(track, queue) }, { toggle() }, { step(1) }, { step(-1) }, { refreshLibrary() }, libraryMessage, repeatMode, { cycleRepeat() }, shuffleEnabled, { toggleShuffle() }, equalizerEnabled, equalizerLevels, equalizerRange, { updateEqualizerEnabled(it) }, { band, level -> setEqualizerBand(band, level) }, currentPositionMs)
             }
-            override fun onIsPlayingChanged(isPlaying: Boolean) {
-                playing = isPlaying
+            refreshLibrary()
+            val ticker = android.os.Handler(mainLooper)
+            val tick = object : Runnable {
+                override fun run() {
+                    if (!isFinishing && !isDestroyed) {
+                        currentPositionMs = if (player.mediaItemCount > 0) player.currentPosition else currentPositionMs
+                        ticker.postDelayed(this, 500)
+                    }
+                }
             }
-        })
-        setContent {
-            MMApp(tracks, current, playing, activeQueue, { track, queue -> play(track, queue) }, { toggle() }, { step(1) }, { step(-1) }, { refreshLibrary() }, libraryMessage, repeatMode, { cycleRepeat() }, shuffleEnabled, { toggleShuffle() }, equalizerEnabled, equalizerLevels, equalizerRange, { updateEqualizerEnabled(it) }, { band, level -> setEqualizerBand(band, level) }, currentPositionMs)
-        }
-        refreshLibrary()
-        val ticker = android.os.Handler(mainLooper)
-        val tick = object : Runnable { override fun run() { if (!isFinishing) { currentPositionMs = if (player.mediaItemCount > 0) player.currentPosition else currentPositionMs; ticker.postDelayed(this, 500) } } }
-        ticker.post(tick)
+            ticker.post(tick)
+        }, ContextCompat.getMainExecutor(this))
     }
     private fun refreshLibrary() {
         val p = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
@@ -150,7 +165,7 @@ class MainActivity : ComponentActivity() {
         val queue = requestedQueue.distinctBy { it.id }.ifEmpty { listOf(t) }
         val index = queue.indexOfFirst { it.id == t.id }.coerceAtLeast(0)
         activeQueue = queue
-        player.setMediaItems(queue.map { MediaItem.fromUri(it.uri) }, index, 0L)
+        player.setMediaItems(queue.map { track -> MediaItem.Builder().setUri(track.uri).setMediaMetadata(MediaMetadata.Builder().setTitle(track.title).setArtist(track.artist).apply { track.cover?.let { setArtworkUri(it) } }.build()).build() }, index, 0L)
         player.repeatMode = repeatMode
         player.shuffleModeEnabled = shuffleEnabled
         player.prepare()
@@ -178,9 +193,9 @@ class MainActivity : ComponentActivity() {
         player.shuffleModeEnabled = shuffleEnabled
     }
     private fun setupEqualizer() {
-        if (equalizer != null || player.audioSessionId == 0) return
+        if (equalizer != null || PlaybackService.audioSessionId == 0) return
         try {
-            val eq = Equalizer(0, player.audioSessionId)
+            val eq = Equalizer(0, PlaybackService.audioSessionId)
             val range = eq.bandLevelRange
             equalizerRange = range[0].toInt()..range[1].toInt()
             equalizerLevels = (0 until eq.numberOfBands.toInt()).map { eq.getBandLevel(it.toShort()).toInt() }
@@ -199,8 +214,8 @@ class MainActivity : ComponentActivity() {
             equalizerLevels = equalizerLevels.toMutableList().also { if (band in it.indices) it[band] = level }
         } catch (_: Exception) { }
     }
-    override fun onPause() { super.onPause(); getSharedPreferences("mmplayer", 0).edit().putLong("last_track_id", current?.id ?: -1L).putLong("last_position_ms", player.currentPosition).apply() }
-    override fun onDestroy() { equalizer?.release(); player.release(); super.onDestroy() }
+    override fun onPause() { super.onPause(); if (::player.isInitialized) getSharedPreferences("mmplayer", 0).edit().putLong("last_track_id", current?.id ?: -1L).putLong("last_position_ms", player.currentPosition).apply() }
+    override fun onDestroy() { equalizer?.release(); controllerFuture?.let { MediaController.releaseFuture(it) }; controllerFuture = null; super.onDestroy() }
 }
 private fun time(ms: Long) = String.format(Locale.getDefault(), "%d:%02d", ms / 60000, (ms / 1000) % 60)
 private fun sizeText(n: Long) = if (n >= 1048576) String.format(Locale.US, "%.1f MB", n / 1048576.0) else String.format(Locale.US, "%.0f KB", n / 1024.0)
