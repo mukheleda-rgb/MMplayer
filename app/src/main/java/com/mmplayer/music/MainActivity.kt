@@ -110,7 +110,8 @@ class MainActivity : ComponentActivity() {
     private var repeatMode by mutableIntStateOf(Player.REPEAT_MODE_OFF)
     private var shuffleEnabled by mutableStateOf(false)
     private var equalizer: Equalizer? = null
-    private var currentPositionMs by mutableLongStateOf(0L)
+    private val currentPositionState = mutableLongStateOf(0L)
+    private var currentPositionMs by currentPositionState
     private var equalizerLevels by mutableStateOf(listOf<Int>())
     private var equalizerEnabled by mutableStateOf(false)
     private var equalizerRange by mutableStateOf(-1500..1500)
@@ -136,7 +137,7 @@ class MainActivity : ComponentActivity() {
                 override fun onIsPlayingChanged(isPlaying: Boolean) { playing = isPlaying }
             })
             setContent {
-                MMApp(tracks, current, playing, activeQueue, { track, queue -> play(track, queue) }, { toggle() }, { step(1) }, { step(-1) }, { refreshLibrary() }, libraryMessage, repeatMode, { cycleRepeat() }, shuffleEnabled, { toggleShuffle() }, equalizerEnabled, equalizerLevels, equalizerRange, { updateEqualizerEnabled(it) }, { band, level -> setEqualizerBand(band, level) }, currentPositionMs, { position -> if (player.mediaItemCount > 0) player.seekTo(position.coerceIn(0L, player.duration.coerceAtLeast(0L))) })
+                MMApp(tracks, current, playing, activeQueue, { track, queue -> play(track, queue) }, { toggle() }, { step(1) }, { step(-1) }, { refreshLibrary() }, libraryMessage, repeatMode, { cycleRepeat() }, shuffleEnabled, { toggleShuffle() }, equalizerEnabled, equalizerLevels, equalizerRange, { updateEqualizerEnabled(it) }, { band, level -> setEqualizerBand(band, level) }, currentPositionState, { position -> if (player.mediaItemCount > 0) player.seekTo(position.coerceIn(0L, player.duration.coerceAtLeast(0L))) })
             }
             refreshLibrary()
             val ticker = android.os.Handler(mainLooper)
@@ -243,7 +244,7 @@ private fun getLists(c: Context): Map<String, List<Long>> = try {
 private fun putLists(c: Context, m: Map<String, List<Long>>) { val j = JSONObject(); m.forEach { (k, v) -> j.put(k, JSONArray(v)) }; c.getSharedPreferences("mmplayer", 0).edit().putString("lists", j.toString()).apply() }
 
 @Composable
-private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, playerQueue: List<Track>, play: (Track, List<Track>) -> Unit, toggle: () -> Unit, next: () -> Unit, previous: () -> Unit, refresh: () -> Unit, libraryMessage: String, repeatMode: Int, cycleRepeat: () -> Unit, shuffleEnabled: Boolean, toggleShuffle: () -> Unit, equalizerEnabled: Boolean, equalizerLevels: List<Int>, equalizerRange: IntRange, setEqualizerEnabled: (Boolean) -> Unit, setEqualizerBand: (Int, Int) -> Unit, currentPositionMs: Long, seekTo: (Long) -> Unit) {
+private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, playerQueue: List<Track>, play: (Track, List<Track>) -> Unit, toggle: () -> Unit, next: () -> Unit, previous: () -> Unit, refresh: () -> Unit, libraryMessage: String, repeatMode: Int, cycleRepeat: () -> Unit, shuffleEnabled: Boolean, toggleShuffle: () -> Unit, equalizerEnabled: Boolean, equalizerLevels: List<Int>, equalizerRange: IntRange, setEqualizerEnabled: (Boolean) -> Unit, setEqualizerBand: (Int, Int) -> Unit, currentPositionMs: State<Long>, seekTo: (Long) -> Unit) {
     val ctx = LocalContext.current
     val prefs = remember { ctx.getSharedPreferences("mmplayer", 0) }
     var lang by remember { mutableStateOf(prefs.getString("lang", "ar") ?: "ar") }
@@ -289,8 +290,8 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
             prefs.edit().putString("bg_" + backgroundPickerTab, uri.toString()).apply()
         } catch (_: Exception) { Toast.makeText(ctx, "تعذر حفظ الصورة", Toast.LENGTH_SHORT).show() }
     }
-    val folderCounts = tracks.groupingBy { it.path.substringBeforeLast('/', "").ifBlank { "Unknown folder" } }.eachCount().toSortedMap()
-    val visibleTracks = tracks.map { t -> categoryOverrides[t.id]?.let { t.copy(quran = it) } ?: t }.filter { it.path.substringBeforeLast('/', "").ifBlank { "Unknown folder" } !in hiddenFolders }
+    val folderCounts = remember(tracks) { tracks.groupingBy { it.path.substringBeforeLast('/', "").ifBlank { "Unknown folder" } }.eachCount().toSortedMap() }
+    val visibleTracks = remember(tracks, categoryOverrides, hiddenFolders) { tracks.map { t -> categoryOverrides[t.id]?.let { t.copy(quran = it) } ?: t }.filter { it.path.substringBeforeLast('/', "").ifBlank { "Unknown folder" } !in hiddenFolders } }
     val darkMode = when (themeMode) { "light" -> false; "system" -> isSystemInDarkTheme(); else -> true }
     val baseTheme = appThemes[themeNo]
     val th = if (darkMode) baseTheme else baseTheme.copy(bg = Color(0xFFF3F5F8), panel = Color.White, second = Color(0xFF596575))
@@ -328,19 +329,19 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
         } catch (e: Exception) { Toast.makeText(ctx, e.message ?: "Export error", Toast.LENGTH_LONG).show() }
     }
 
-    val base = when (tab) {
+    val base = remember(tab, visibleTracks, lists, activeList) { when (tab) {
         "quran" -> visibleTracks.filter { it.quran }
         "music" -> visibleTracks.filter { !it.quran }
         "playlist" -> lists[activeList].orEmpty().mapNotNull { id -> visibleTracks.firstOrNull { it.id == id } }
         else -> visibleTracks.filter { !it.quran }
-    }
-    val filtered = base.filter { it.title.contains(search, true) || it.artist.contains(search, true) }
-    val shown = when (sort) {
+    } }
+    val filtered = remember(base, search) { base.filter { it.title.contains(search, true) || it.artist.contains(search, true) } }
+    val shown = remember(filtered, sort, manual) { when (sort) {
         "name" -> filtered.sortedBy { it.title.lowercase() }
         "date" -> filtered.sortedByDescending { it.added }
         "size" -> filtered.sortedByDescending { it.size }
         else -> if (manual.isEmpty()) filtered else filtered.sortedBy { manual.indexOf(it.id).let { n -> if (n < 0) Int.MAX_VALUE else n } }
-    }
+    } }
     MaterialTheme(colorScheme = if (darkMode) darkColorScheme(primary = th.accent, secondary = th.second, background = th.bg, surface = th.panel) else lightColorScheme(primary = th.accent, secondary = th.second, background = th.bg, surface = th.panel, onSurface = primaryText, onBackground = primaryText)) {
         val canHandleBack = expanded || equalizerDialog || showFoldersDialog || settingsSection.isNotBlank() || dialog.isNotBlank() || selected != null || search.isNotBlank() || tab != "home"
         BackHandler(enabled = canHandleBack) {
@@ -439,8 +440,8 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                             }
                         }
                         "home" -> {
-                            val recent = visibleTracks.sortedByDescending { it.added }.take(10)
-                            val popular = visibleTracks.sortedByDescending { playCounts[it.id] ?: 0 }.filter { (playCounts[it.id] ?: 0) > 0 }.take(10)
+                            val recent = remember(visibleTracks) { visibleTracks.sortedByDescending { it.added }.take(10) }
+                            val popular = remember(visibleTracks, playCounts) { visibleTracks.sortedByDescending { playCounts[it.id] ?: 0 }.filter { (playCounts[it.id] ?: 0) > 0 }.take(10) }
                             val last = visibleTracks.firstOrNull { it.id == prefs.getLong("last_track_id", -1L) }
                             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
                                 Box(Modifier.fillMaxWidth().height(170.dp), contentAlignment = Alignment.Center) {
@@ -463,7 +464,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                         Column(Modifier.weight(1f).padding(horizontal = 8.dp)) {
                                             Text(tr("آخر ملف تم تشغيله", "Last played"), color = th.accent, fontSize = 11.sp)
                                             Text(last?.title ?: tr("لم يتم تشغيل ملف بعد", "Nothing played yet"), color = primaryText, maxLines = 1)
-                                            Text(time(if (last?.id == current?.id) currentPositionMs else prefs.getLong("last_position_ms", 0L)), color = secondaryText, fontSize = 11.sp)
+                                            CurrentPositionLabel(currentPositionMs, last?.id == current?.id, prefs.getLong("last_position_ms", 0L), secondaryText)
                                         }
                                         IconButton(onClick = previous) { Icon(Icons.Rounded.SkipPrevious, null, tint = th.accent) }
                                         IconButton(onClick = { if (current == null && last != null) play(last, visibleTracks.filter { it.quran == last.quran }) else toggle() }) { Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null, tint = th.accent) }
@@ -750,7 +751,12 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
 }
 
 @Composable
-private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: AppTheme, ar: Boolean, playerEffect: String, playerTheme: String, currentPositionMs: Long, close: () -> Unit, toggle: () -> Unit, next: () -> Unit, previous: () -> Unit, play: (Track) -> Unit, seekTo: (Long) -> Unit, repeatMode: Int, cycleRepeat: () -> Unit, shuffleEnabled: Boolean, toggleShuffle: () -> Unit, openEqualizer: () -> Unit) {
+private fun CurrentPositionLabel(position: State<Long>, isCurrent: Boolean, savedPosition: Long, color: Color) {
+    Text(time(if (isCurrent) position.value else savedPosition), color = color, fontSize = 11.sp)
+}
+
+@Composable
+private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: AppTheme, ar: Boolean, playerEffect: String, playerTheme: String, currentPositionMs: State<Long>, close: () -> Unit, toggle: () -> Unit, next: () -> Unit, previous: () -> Unit, play: (Track) -> Unit, seekTo: (Long) -> Unit, repeatMode: Int, cycleRepeat: () -> Unit, shuffleEnabled: Boolean, toggleShuffle: () -> Unit, openEqualizer: () -> Unit) {
     var dx by remember { mutableFloatStateOf(0f) }; var dy by remember { mutableFloatStateOf(0f) }
     val playerBackground = when (playerTheme) {
         "3d" -> Color(0xFF171A22)
@@ -820,10 +826,10 @@ private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: A
             }
         }
         Column(Modifier.fillMaxWidth()) {
-            Slider(value = currentPositionMs.coerceIn(0L, track.duration.coerceAtLeast(1L)).toFloat(), onValueChange = { seekTo(it.toLong()) }, valueRange = 0f..track.duration.coerceAtLeast(1L).toFloat(), colors = SliderDefaults.colors(thumbColor = playerAccent, activeTrackColor = playerAccent, inactiveTrackColor = Color.Gray.copy(alpha = 0.45f)))
+            Slider(value = currentPositionMs.value.coerceIn(0L, track.duration.coerceAtLeast(1L)).toFloat(), onValueChange = { seekTo(it.toLong()) }, valueRange = 0f..track.duration.coerceAtLeast(1L).toFloat(), colors = SliderDefaults.colors(thumbColor = playerAccent, activeTrackColor = playerAccent, inactiveTrackColor = Color.Gray.copy(alpha = 0.45f)))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(time(currentPositionMs), color = th.secondaryText, fontSize = 11.sp)
-                Text("-" + time((track.duration - currentPositionMs).coerceAtLeast(0L)) + " / " + time(track.duration), color = th.secondaryText, fontSize = 11.sp)
+                Text(time(currentPositionMs.value), color = th.secondaryText, fontSize = 11.sp)
+                Text("-" + time((track.duration - currentPositionMs.value).coerceAtLeast(0L)) + " / " + time(track.duration), color = th.secondaryText, fontSize = 11.sp)
             }
         }
         Spacer(Modifier.height(12.dp))
