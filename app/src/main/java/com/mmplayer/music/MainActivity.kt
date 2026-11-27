@@ -580,7 +580,16 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                         }
                         "player" -> {
                             Text(tr("ثيم المشغل", "Player theme"), color = th.accent, fontWeight = FontWeight.Bold)
-                            listOf("3d" to tr("ثلاثي الأبعاد (افتراضي)", "3D Neumorphism (Default)"), "glass" to tr("زجاجي", "Glass"), "classic" to tr("كلاسيكي", "Classic"), "neon" to tr("نيون", "Neon"), "minimal" to tr("بسيط", "Minimal")).forEach { (value, label) ->
+                            listOf(
+                                "3d" to tr("ثلاثي الأبعاد (افتراضي)", "3D Neumorphism (Default)"),
+                                "glass" to tr("الزجاج الشفاف", "Glassmorphism"),
+                                "neon" to tr("النيون", "Neon"),
+                                "cinematic" to tr("السينمائي", "Cinematic"),
+                                "wave" to tr("الموجات الصوتية", "Waveform"),
+                                "minimal" to tr("البساطة الفاخرة", "Minimal Premium"),
+                                "cassette" to tr("الكاسيت القديم", "Retro Cassette"),
+                                "vinyl" to tr("الأسطوانة الدوارة", "Vinyl Record")
+                            ).forEach { (value, label) ->
                                 Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (playerTheme == value) th.accent.copy(alpha = 0.16f) else Color.Transparent).clickable { playerTheme = value; prefs.edit().putString("player_theme", value).apply() }.padding(9.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Text(label, color = Color.White, modifier = Modifier.weight(1f))
                                     if (playerTheme == value) Icon(Icons.Rounded.CheckCircle, null, tint = th.accent)
@@ -699,19 +708,52 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
 @Composable
 private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: AppTheme, ar: Boolean, playerEffect: String, playerTheme: String, currentPositionMs: Long, close: () -> Unit, toggle: () -> Unit, next: () -> Unit, previous: () -> Unit, play: (Track) -> Unit, seekTo: (Long) -> Unit, repeatMode: Int, cycleRepeat: () -> Unit, shuffleEnabled: Boolean, toggleShuffle: () -> Unit, openEqualizer: () -> Unit) {
     var dx by remember { mutableFloatStateOf(0f) }; var dy by remember { mutableFloatStateOf(0f) }
-    val playerBackground = when (playerTheme) { "3d" -> Color(0xFF171A22); "glass" -> th.panel; "neon" -> Color(0xFF080B12); "minimal" -> th.bg; else -> th.bg }
-    Column(Modifier.fillMaxSize().background(playerBackground).pointerInput(track.id) {
+    val playerBackground = when (playerTheme) {
+        "3d" -> Color(0xFF171A22)
+        "glass" -> Color(0xCC17212D)
+        "neon" -> Color(0xFF080B12)
+        "cinematic" -> Color(0xFF090A10)
+        "wave" -> Color(0xFF0B1720)
+        "minimal" -> Color(0xFF101114)
+        "cassette" -> Color(0xFF17130F)
+        "vinyl" -> Color(0xFF0D0D12)
+        else -> th.bg
+    }
+    val playerAccent = when (playerTheme) {
+        "3d" -> Color(0xFF83B9E8)
+        "neon" -> Color(0xFF39D8F2)
+        "cinematic" -> Color(0xFFD8B77A)
+        "wave" -> Color(0xFF48D6C8)
+        "cassette" -> Color(0xFFE2A56D)
+        "vinyl" -> Color(0xFFB8A0FF)
+        "minimal" -> Color(0xFFE5E7EB)
+        else -> th.accent
+    }
+    Column(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(playerBackground, when (playerTheme) { "3d" -> Color(0xFF202D40); "cinematic" -> Color(0xFF19151D); "vinyl" -> Color(0xFF211B30); else -> playerBackground }, Color(0xFF080A10)))).pointerInput(track.id) {
         detectDragGestures(onDragEnd = { if (dy > 85) close() else if (dx < -60) next() else if (dx > 60) previous(); dx = 0f; dy = 0f }) { change, d -> dx += d.x; dy += d.y; change.consume() }
     }.padding(horizontal = 20.dp)) {
         Box(Modifier.fillMaxWidth().padding(top = 14.dp), contentAlignment = Alignment.Center) { Box(Modifier.width(42.dp).height(5.dp).clip(CircleShape).background(Color.Gray)) }
         Row(Modifier.fillMaxWidth().padding(vertical = 15.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(onClick = close) { Icon(Icons.Rounded.KeyboardArrowDown, null, tint = Color.White) }; Text(if (ar) "قيد التشغيل" else "Now playing", color = Color.White, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center); Icon(Icons.Rounded.MoreHoriz, null, tint = Color.White) }
         Spacer(Modifier.weight(0.3f))
-        if (playerTheme == "3d") {
-            Box(Modifier.fillMaxWidth().padding(horizontal = 12.dp).shadow(20.dp, RoundedCornerShape(26.dp)).background(Brush.linearGradient(listOf(Color(0xFF303642), Color(0xFF11141B))), RoundedCornerShape(26.dp)).border(1.dp, Color.White.copy(alpha = 0.10f), RoundedCornerShape(26.dp)).padding(9.dp)) {
-                Art(track, Modifier.fillMaxWidth().aspectRatio(1f), th)
-            }
-        } else {
-            Art(track, Modifier.fillMaxWidth().aspectRatio(1f).padding(horizontal = 18.dp), th)
+        Box(
+            Modifier.fillMaxWidth().padding(horizontal = 18.dp).aspectRatio(1f)
+                .then(if (playerTheme == "3d") Modifier.shadow(22.dp, RoundedCornerShape(26.dp)) else Modifier)
+                .clip(if (playerTheme == "vinyl") CircleShape else RoundedCornerShape(if (playerTheme == "cassette") 18.dp else 24.dp))
+                .background(when (playerTheme) {
+                    "3d" -> Brush.linearGradient(listOf(Color(0xFF303642), Color(0xFF11141B)))
+                    "glass" -> Brush.linearGradient(listOf(Color(0x66FFFFFF), Color(0x221A2A3A)))
+                    "neon" -> Brush.linearGradient(listOf(Color(0xFF102A35), Color(0xFF160F2B)))
+                    "cinematic" -> Brush.linearGradient(listOf(Color(0xFF2C2520), Color(0xFF08090E)))
+                    "wave" -> Brush.linearGradient(listOf(Color(0xFF10383B), Color(0xFF0A1420)))
+                    "cassette" -> Brush.linearGradient(listOf(Color(0xFF49301F), Color(0xFF17120F)))
+                    "vinyl" -> Brush.linearGradient(listOf(Color(0xFF393044), Color(0xFF0B0B10)))
+                    else -> Brush.linearGradient(listOf(Color(0xFF292D35), Color(0xFF0B0D12)))
+                })
+                .border(if (playerTheme == "3d" || playerTheme == "glass") 1.dp else 0.dp, Color.White.copy(alpha = .14f), if (playerTheme == "vinyl") CircleShape else RoundedCornerShape(24.dp))
+        ) {
+            Art(track, Modifier.fillMaxSize(), th)
+            if (playerTheme == "vinyl") Box(Modifier.align(Alignment.Center).size(22.dp).clip(CircleShape).background(Color(0xFFB8A0FF)).border(4.dp, Color(0xFF17151D), CircleShape))
+            if (playerTheme == "cassette") Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth(.72f).padding(bottom = 12.dp).height(5.dp).clip(CircleShape).background(Color(0xFFE2A56D).copy(alpha = .8f)))
         }
         Spacer(Modifier.height(24.dp))
         AnimatedContent(targetState = track, transitionSpec = {
@@ -734,7 +776,7 @@ private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: A
             }
         }
         Column(Modifier.fillMaxWidth()) {
-            Slider(value = currentPositionMs.coerceIn(0L, track.duration.coerceAtLeast(1L)).toFloat(), onValueChange = { seekTo(it.toLong()) }, valueRange = 0f..track.duration.coerceAtLeast(1L).toFloat(), colors = SliderDefaults.colors(thumbColor = th.accent, activeTrackColor = th.accent, inactiveTrackColor = Color.Gray.copy(alpha = 0.45f)))
+            Slider(value = currentPositionMs.coerceIn(0L, track.duration.coerceAtLeast(1L)).toFloat(), onValueChange = { seekTo(it.toLong()) }, valueRange = 0f..track.duration.coerceAtLeast(1L).toFloat(), colors = SliderDefaults.colors(thumbColor = playerAccent, activeTrackColor = playerAccent, inactiveTrackColor = Color.Gray.copy(alpha = 0.45f)))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
                 Text(time(currentPositionMs), color = Color.LightGray, fontSize = 11.sp)
                 Text("-" + time((track.duration - currentPositionMs).coerceAtLeast(0L)) + " / " + time(track.duration), color = Color.LightGray, fontSize = 11.sp)
@@ -750,7 +792,7 @@ private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: A
                 NeumorphicPlayerButton(Icons.Rounded.SkipNext, if (ar) "التالي" else "Next", next, th, Modifier.size(62.dp))
             } else {
                 IconButton(onClick = previous) { Icon(Icons.Rounded.SkipPrevious, null, tint = Color.White, modifier = Modifier.size(42.dp)) }
-                IconButton(onClick = toggle, modifier = Modifier.padding(horizontal = 22.dp).size(66.dp).background(th.accent, CircleShape)) { Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null, tint = th.bg, modifier = Modifier.size(36.dp)) }
+                IconButton(onClick = toggle, modifier = Modifier.padding(horizontal = 22.dp).size(66.dp).background(playerAccent, CircleShape)) { Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null, tint = th.bg, modifier = Modifier.size(36.dp)) }
                 IconButton(onClick = next) { Icon(Icons.Rounded.SkipNext, null, tint = Color.White, modifier = Modifier.size(42.dp)) }
             }
         }
@@ -768,7 +810,7 @@ private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: A
                 }, color = if (repeatMode != Player.REPEAT_MODE_OFF) th.accent else Color.LightGray)
             }
         }
-        IconButton(onClick = openEqualizer) { Icon(Icons.Rounded.Equalizer, null, tint = th.accent) }
+        IconButton(onClick = openEqualizer) { Icon(Icons.Rounded.Equalizer, null, tint = playerAccent) }
         Spacer(Modifier.weight(0.2f))
         Text(if (ar) "قائمة التشغيل الحالية" else "Current playlist", color = th.accent, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
         LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 16.dp)) {
