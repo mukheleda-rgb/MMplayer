@@ -306,12 +306,6 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
     val th = if (darkMode) baseTheme else baseTheme.copy(bg = Color(0xFFF3F5F8), panel = Color.White, second = Color(0xFF596575))
     val primaryText = th.primaryText
     val secondaryText = th.secondaryText
-    val dialogColors = AlertDialogDefaults.colors(
-        containerColor = th.panel,
-        titleContentColor = th.primaryText,
-        textContentColor = th.secondaryText,
-        iconContentColor = th.accent
-    )
     val ar = lang == "ar"
     fun tr(a: String, e: String) = if (ar) a else e
 
@@ -601,7 +595,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
             else -> tr("الصوت والتشغيل", "Audio & playback")
         }
         AlertDialog(
-            colors = dialogColors,
+            containerColor = th.panel, titleContentColor = th.primaryText, textContentColor = th.secondaryText, iconContentColor = th.accent,
             onDismissRequest = { settingsSection = "" },
             title = { Text(sectionTitle) },
             text = {
