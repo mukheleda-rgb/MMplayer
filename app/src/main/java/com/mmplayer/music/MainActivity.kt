@@ -88,6 +88,13 @@ import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
 import coil.compose.AsyncImage
+import java.io.File
+import java.util.concurrent.Executors
+import coil.ImageLoader
+import coil.SingletonImageLoader
+import coil.disk.DiskCache
+import coil.request.CachePolicy
+import coil.request.ImageRequest
 import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
@@ -125,6 +132,8 @@ class MainActivity : ComponentActivity() {
     private var equalizerEnabled by mutableStateOf(false)
     private var equalizerRange by mutableStateOf(-1500..1500)
     private var libraryMessage by mutableStateOf("")
+    private val libraryExecutor = Executors.newSingleThreadExecutor()
+    private lateinit var artworkLoader: ImageLoader
     private val permission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         if (it) scan() else {
             tracks = emptyList()
@@ -133,6 +142,17 @@ class MainActivity : ComponentActivity() {
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        tracks = loadCachedTracks()
+        if (tracks.isNotEmpty()) libraryMessage = "تم تحميل " + tracks.size + " ملف من الذاكرة المحفوظة"
+        artworkLoader = ImageLoader.Builder(applicationContext)
+            .diskCache {
+                DiskCache.Builder()
+                    .directory(File(cacheDir, "mmplayer_artwork_cache"))
+                    .maxSizeBytes(96L * 1024L * 1024L)
+                    .build()
+            }
+            .build()
+        SingletonImageLoader.setUnsafe { artworkLoader }
         val token = SessionToken(this, ComponentName(this, PlaybackService::class.java))
         val future = MediaController.Builder(this, token).buildAsync()
         controllerFuture = future
@@ -165,27 +185,82 @@ class MainActivity : ComponentActivity() {
         val p = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
         if (ContextCompat.checkSelfPermission(this, p) == PackageManager.PERMISSION_GRANTED) scan() else permission.launch(p)
     }
-    private fun scan() {
-        val u = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
-        val cols = arrayOf(MediaStore.Audio.Media._ID, MediaStore.Audio.Media.TITLE, MediaStore.Audio.Media.ARTIST, MediaStore.Audio.Media.DURATION, MediaStore.Audio.Media.ALBUM_ID, MediaStore.Audio.Media.SIZE, MediaStore.Audio.Media.DATE_ADDED, MediaStore.Audio.Media.DATA)
-        val found = mutableListOf<Track>()
-        try {
-        contentResolver.query(u, cols, null, null, MediaStore.Audio.Media.TITLE + " COLLATE NOCASE ASC")?.use { c: Cursor ->
-            while (c.moveToNext()) {
-                val id = c.getLong(c.getColumnIndexOrThrow(MediaStore.Audio.Media._ID))
-                val title = c.getString(c.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)) ?: "Unknown"
-                val artist = c.getString(c.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)) ?: "Unknown artist"
-                val q = (title + " " + artist).contains(Regex("quran|قرآن|قران|سورة|سوره|تلاوة|تلاوه|عبدالباسط|مشاري|السديس|العفاسي", RegexOption.IGNORE_CASE))
-                found.add(Track(id, title, artist, ContentUris.withAppendedId(u, id), c.getLong(c.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)), q, c.getLong(c.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)), c.getLong(c.getColumnIndexOrThrow(MediaStore.Audio.Media.SIZE)), c.getLong(c.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_ADDED)), c.getString(c.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA)) ?: ""))
+    private fun loadCachedTracks(): List<Track> {
+        val raw = getSharedPreferences("mmplayer", MODE_PRIVATE).getString("library_cache_v1", null) ?: return emptyList()
+        return runCatching {
+            val array = JSONArray(raw)
+            buildList {
+                for (i in 0 until array.length()) {
+                    val item = array.getJSONObject(i)
+                    val id = item.getLong("id")
+                    add(Track(
+                        id, item.optString("title", "Unknown"), item.optString("artist", "Unknown artist"),
+                        ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id),
+                        item.optLong("duration"), item.optBoolean("quran"),
+                        item.optLong("album"), item.optLong("size"), item.optLong("added"), item.optString("path")
+                    ))
+                }
             }
+        }.getOrDefault(emptyList())
+    }
+
+    private fun saveCachedTracks(items: List<Track>) {
+        val array = JSONArray()
+        items.forEach { t ->
+            array.put(JSONObject().apply {
+                put("id", t.id); put("title", t.title); put("artist", t.artist)
+                put("duration", t.duration); put("quran", t.quran); put("album", t.album)
+                put("size", t.size); put("added", t.added); put("path", t.path)
+            })
         }
-        tracks = found
-        libraryMessage = if (found.isEmpty()) "لم يتم العثور على ملفات صوتية. تأكد من وجود ملفات موسيقى في الهاتف." else "تم العثور على " + found.size + " ملف صوتي"
-        } catch (e: SecurityException) {
-            tracks = emptyList()
-            libraryMessage = "لا توجد صلاحية للوصول إلى ملفات الصوت. اضغط تحديث واسمح بالوصول."
-        } catch (e: Exception) {
-            libraryMessage = "تعذر فحص ملفات الصوت: " + (e.localizedMessage ?: "خطأ غير معروف")
+        getSharedPreferences("mmplayer", MODE_PRIVATE).edit().putString("library_cache_v1", array.toString()).apply()
+    }
+
+    private fun preloadArtwork(items: List<Track>) {
+        if (!::artworkLoader.isInitialized) return
+        items.asSequence().mapNotNull { it.cover }.distinct().forEach { cover ->
+            artworkLoader.enqueue(
+                ImageRequest.Builder(applicationContext)
+                    .data(cover)
+                    .size(256, 256)
+                    .memoryCachePolicy(CachePolicy.ENABLED)
+                    .diskCachePolicy(CachePolicy.ENABLED)
+                    .build()
+            )
+        }
+    }
+
+    private fun scan() {
+        libraryExecutor.execute {
+            val u = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
+            val cols = arrayOf(MediaStore.Audio.Media._ID, MediaStore.Audio.Media.TITLE, MediaStore.Audio.Media.ARTIST, MediaStore.Audio.Media.DURATION, MediaStore.Audio.Media.ALBUM_ID, MediaStore.Audio.Media.SIZE, MediaStore.Audio.Media.DATE_ADDED, MediaStore.Audio.Media.DATA)
+            val found = mutableListOf<Track>()
+            try {
+                contentResolver.query(u, cols, null, null, MediaStore.Audio.Media.TITLE + " COLLATE NOCASE ASC")?.use { c: Cursor ->
+                    while (c.moveToNext()) {
+                        val id = c.getLong(c.getColumnIndexOrThrow(MediaStore.Audio.Media._ID))
+                        val title = c.getString(c.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)) ?: "Unknown"
+                        val artist = c.getString(c.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)) ?: "Unknown artist"
+                        val q = (title + " " + artist).contains(Regex("quran|قرآن|قران|سورة|سوره|تلاوة|تلاوه|عبدالباسط|مشاري|السديس|العفاسي", RegexOption.IGNORE_CASE))
+                        found.add(Track(id, title, artist, ContentUris.withAppendedId(u, id), c.getLong(c.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)), q, c.getLong(c.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)), c.getLong(c.getColumnIndexOrThrow(MediaStore.Audio.Media.SIZE)), c.getLong(c.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_ADDED)), c.getString(c.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA)) ?: ""))
+                    }
+                }
+                saveCachedTracks(found)
+                preloadArtwork(found)
+                runOnUiThread {
+                    tracks = found
+                    libraryMessage = if (found.isEmpty()) "لم يتم العثور على ملفات صوتية. تأكد من وجود ملفات موسيقى في الهاتف." else "تم فحص وحفظ " + found.size + " ملف"
+                }
+            } catch (e: SecurityException) {
+                runOnUiThread {
+                    if (tracks.isEmpty()) tracks = emptyList()
+                    libraryMessage = "لا توجد صلاحية للوصول إلى ملفات الصوت. اضغط تحديث واسمح بالوصول."
+                }
+            } catch (e: Exception) {
+                runOnUiThread {
+                    libraryMessage = "تعذر فحص ملفات الصوت: " + (e.localizedMessage ?: "خطأ غير معروف")
+                }
+            }
         }
     }
     private fun play(t: Track, requestedQueue: List<Track>) {
