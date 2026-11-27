@@ -46,6 +46,7 @@ import androidx.compose.animation.core.spring
 import kotlin.math.abs
 import kotlin.math.cos
 import kotlin.math.sin
+import kotlin.math.roundToInt
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
@@ -68,9 +69,11 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.clipToBounds
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.layout.ContentScale
+import androidx.compose.ui.layout.onSizeChanged
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
@@ -81,7 +84,11 @@ import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
+import androidx.compose.ui.input.nestedscroll.NestedScrollConnection
+import androidx.compose.ui.input.nestedscroll.NestedScrollSource
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.platform.LocalDensity
 import androidx.compose.ui.text.font.FontWeight
 import androidx.compose.ui.text.style.TextOverflow
 import androidx.compose.ui.unit.dp
@@ -912,7 +919,35 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                         "most" -> TrackRows(visibleTracks.sortedByDescending { playCounts[it.id] ?: 0 }.filter { (playCounts[it.id] ?: 0) > 0 }.take(10), current, th, { play(it, visibleTracks.filter { q -> q.quran == it.quran }) }, { selected = it }, { _, _ -> })
                         "recent" -> TrackRows(visibleTracks.sortedByDescending { it.added }.take(10), current, th, { play(it, visibleTracks.filter { q -> q.quran == it.quran }) }, { selected = it }, { _, _ -> })
                         else -> {
-                            Column(Modifier.fillMaxSize()) {
+                                val collapsibleLibraryHeader = activeTab == "music" || activeTab == "quran" || activeTab == "playlist"
+                                var libraryHeaderHeightPx by remember(activeTab) { mutableIntStateOf(0) }
+                                var libraryHeaderCollapsePx by remember(activeTab) { mutableFloatStateOf(0f) }
+                                val libraryHeaderScroll = remember(activeTab, libraryHeaderHeightPx) {
+                                    object : NestedScrollConnection {
+                                        override fun onPreScroll(available: Offset, source: NestedScrollSource): Offset {
+                                            if (!collapsibleLibraryHeader || libraryHeaderHeightPx <= 0) return Offset.Zero
+                                            val old = libraryHeaderCollapsePx
+                                            val next = (old - available.y).coerceIn(0f, libraryHeaderHeightPx.toFloat())
+                                            libraryHeaderCollapsePx = next
+                                            return Offset(0f, old - next)
+                                        }
+                                    }
+                                }
+                                Column(Modifier.fillMaxSize().nestedScroll(libraryHeaderScroll)) {
+                                    Box(
+                                        Modifier.fillMaxWidth()
+                                            .height(with(LocalDensity.current) { (libraryHeaderHeightPx - libraryHeaderCollapsePx).coerceAtLeast(0f).toDp() })
+                                            .clipToBounds()
+                                    ) {
+                                        Column(
+                                            Modifier.fillMaxWidth()
+                                                .wrapContentHeight(unbounded = true)
+                                                .onSizeChanged { size ->
+                                                    libraryHeaderHeightPx = size.height
+                                                    if (libraryHeaderCollapsePx > size.height) libraryHeaderCollapsePx = size.height.toFloat()
+                                                }
+                                                .offset { IntOffset(0, -libraryHeaderCollapsePx.roundToInt()) }
+                                        ) {
                                 if (activeTab == "music" || activeTab == "quran") {
                                     val sectionTitle = if (activeTab == "quran") tr("القرآن الكريم", "The Holy Quran") else tr("الملفات الموسيقية", "Music Library")
                                     GlowingSectionTitle(sectionTitle, th, Modifier.fillMaxWidth().padding(top = 8.dp, bottom = 10.dp))
@@ -1009,6 +1044,8 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                         TextButton(onClick = { selectionMode = false; selectedTrackIds = emptySet() }) { Text(tr("إلغاء", "Cancel")) }
                                     }
                                 }
+                                        }
+                                    }
                                 TrackLibraryView(
                                     rows = pageShown, current = current, th = th, play = { play(it, pageBase) }, menu = { selected = it },
                                     move = { a, b ->
