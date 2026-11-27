@@ -898,8 +898,9 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                 if (selectionMode) {
                                     Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
                                         Text(selectedTrackIds.size.toString() + " " + tr("محدد", "selected"), color = secondaryText, modifier = Modifier.weight(1f))
+                                        TextButton(enabled = selectedTrackIds.isNotEmpty() && lists.isNotEmpty(), onClick = { dialog = "bulk_add" }) { Text(tr("إضافة لقائمة", "Add to list"), fontSize = 11.sp) }
                                         TextButton(enabled = selectedTrackIds.isNotEmpty(), onClick = { newName = ""; dialog = "new_from_selection" }) { Text(tr("إنشاء قائمة", "Create list"), fontSize = 11.sp) }
-                                        TextButton(enabled = selectedTrackIds.isNotEmpty(), onClick = { deleteTargets = pageShown.filter { it.id in selectedTrackIds }; dialog = "delete_tracks" }) { Text(tr("حذف من الجهاز", "Delete from device"), color = Color(0xFFFF7777)) }
+                                        TextButton(enabled = selectedTrackIds.isNotEmpty(), onClick = { deleteTargets = pageShown.filter { it.id in selectedTrackIds }; dialog = "delete_tracks" }) { Text(tr("حذف", "Delete"), color = Color(0xFFFF7777)) }
                                         TextButton(onClick = { selectionMode = false; selectedTrackIds = emptySet() }) { Text(tr("إلغاء", "Cancel")) }
                                     }
                                 }
@@ -1143,6 +1144,35 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
     }
     if (dialog == "new" || dialog == "new_from_selection") AlertDialog(containerColor = th.panel, titleContentColor = th.primaryText, textContentColor = th.secondaryText, iconContentColor = th.accent, onDismissRequest = { dialog = "" }, title = { Text(tr("قائمة جديدة", "New playlist"), color = primaryText) }, text = { OutlinedTextField(newName, { newName = it }, label = { Text(tr("اسم القائمة", "Playlist name")) }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = th.primaryText, unfocusedTextColor = th.primaryText, focusedBorderColor = th.accent, unfocusedBorderColor = th.secondaryText, focusedLabelColor = th.accent, unfocusedLabelColor = th.secondaryText, cursorColor = th.accent)) }, confirmButton = { TextButton(onClick = { if (newName.isNotBlank()) { val ids = if (dialog == "new_from_selection") selectedTrackIds.toList() else emptyList(); lists = lists + (newName.trim() to ids); putLists(ctx, lists); activeList = newName.trim(); if (dialog == "new") { tab = "playlist"; addTracksToList = emptySet(); addTrackSearch = "" }; selectedTrackIds = emptySet(); selectionMode = false }; newName = ""; dialog = "" }) { Text(tr("إنشاء", "Create")) } }, dismissButton = { TextButton(onClick = { dialog = ""; selectedTrackIds = emptySet(); selectionMode = false }) { Text(tr("إلغاء", "Cancel")) } })
     if (dialog == "add") AlertDialog(containerColor = th.panel, titleContentColor = th.primaryText, textContentColor = th.secondaryText, iconContentColor = th.accent, onDismissRequest = { dialog = "" }, title = { Text(tr("إضافة إلى قائمة", "Add to playlist")) }, text = { Column { lists.keys.forEach { n -> TextButton(onClick = { val t = selected; if (t != null) { lists = lists + (n to (lists[n].orEmpty() + t.id).distinct()); putLists(ctx, lists) }; selected = null; dialog = "" }) { Text(n) } } } }, confirmButton = { TextButton(onClick = { dialog = ""; selected = null }) { Text(tr("إغلاق", "Close")) } })
+    if (dialog == "bulk_add") {
+        AlertDialog(
+            containerColor = th.panel, titleContentColor = th.primaryText, textContentColor = th.secondaryText,
+            onDismissRequest = { dialog = "" },
+            title = { Text(tr("إضافة الملفات المحددة إلى قائمة", "Add selected tracks to playlist")) },
+            text = {
+                Column(Modifier.fillMaxWidth().heightIn(max = 420.dp).verticalScroll(rememberScrollState())) {
+                    Text(selectedTrackIds.size.toString() + " " + tr("ملف محدد", "selected tracks"), color = th.accent, fontSize = 12.sp)
+                    lists.keys.sorted().forEach { name ->
+                        val already = lists[name].orEmpty().toSet()
+                        val countToAdd = selectedTrackIds.count { it !in already }
+                        Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable {
+                            lists = lists + (name to (lists[name].orEmpty() + selectedTrackIds).distinct())
+                            putLists(ctx, lists)
+                            selectedTrackIds = emptySet()
+                            selectionMode = false
+                            dialog = ""
+                            Toast.makeText(ctx, tr("تمت إضافة الملفات إلى القائمة", "Tracks added to playlist"), Toast.LENGTH_SHORT).show()
+                        }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                            Icon(Icons.Rounded.QueueMusic, null, tint = th.accent)
+                            Text(name, color = primaryText, modifier = Modifier.weight(1f).padding(horizontal = 10.dp), maxLines = 1, overflow = TextOverflow.Ellipsis)
+                            Text(if (countToAdd == 0) tr("موجودة", "Already added") else "+$countToAdd", color = secondaryText, fontSize = 11.sp)
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { dialog = "" }) { Text(tr("إغلاق", "Close")) } }
+        )
+    }
     if (dialog == "add_tracks_to_list") {
         val musicChoices = visibleTracks.filter { !it.quran && (it.title.contains(addTrackSearch, true) || it.artist.contains(addTrackSearch, true)) }
         val existingIds = lists[activeList].orEmpty().toSet()
