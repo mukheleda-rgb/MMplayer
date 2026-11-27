@@ -227,6 +227,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
     LaunchedEffect(current?.id) { current?.let { t -> playCounts = playCounts + (t.id to ((playCounts[t.id] ?: 0) + 1)); val j = JSONObject(); playCounts.forEach { (id, n) -> j.put(id.toString(), n) }; prefs.edit().putString("play_counts", j.toString()).putLong("last_track_id", t.id).apply() } }
     var hiddenFolders by remember { mutableStateOf(runCatching { val a = JSONArray(prefs.getString("hidden_folders", "[]") ?: "[]"); (0 until a.length()).map { a.getString(it) }.toSet() }.getOrDefault(emptySet())) }
     var showFoldersDialog by remember { mutableStateOf(false) }
+    var settingsSection by remember { mutableStateOf("") }
     var backgroundPickerTab by remember { mutableStateOf("home") }
     val tabKeys = listOf("home", "music", "quran", "lists", "settings")
     val tabBackgrounds = remember { mutableStateMapOf<String, String>().apply { tabKeys.forEach { put(it, prefs.getString("bg_" + it, "") ?: "") } } }
@@ -321,31 +322,12 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                     }
                     when (tab) {
                         "settings" -> {
-                            Text(tr("خلفية كل واجهة", "Background for each tab"), color = Color.White, fontWeight = FontWeight.Bold)
-                            tabKeys.forEach { key ->
-                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                    Text(if (ar) mapOf("home" to "الرئيسية", "music" to "الموسيقى", "quran" to "القرآن", "lists" to "القوائم", "settings" to "الإعدادات")[key].orEmpty() else key, color = Color.White, modifier = Modifier.weight(1f))
-                                    TextButton(onClick = { backgroundPickerTab = key; backgroundPicker.launch(arrayOf("image/*")) }) { Text(tr("اختيار صورة", "Choose image")) }
-                                    if (tabBackgrounds[key].orEmpty().isNotBlank()) IconButton(onClick = { tabBackgrounds[key] = ""; prefs.edit().remove("bg_" + key).apply() }) { Icon(Icons.Rounded.Delete, null, tint = th.second) }
-                                }
-                            }
-                            tabKeys.forEach { key ->
-                                Text((if (ar) "تأثيرات " + mapOf("home" to "الرئيسية", "music" to "الموسيقى", "quran" to "القرآن", "lists" to "القوائم", "settings" to "الإعدادات")[key] else key) + " — " + tr("التعتيم", "Dim"), color = Color.White, fontSize = 12.sp)
-                                Slider(value = tabDim[key] ?: 0.42f, onValueChange = { tabDim[key] = it; prefs.edit().putFloat("dim_" + key, it).apply() }, valueRange = 0f..0.9f)
-                                Text(tr("التمويه", "Blur"), color = Color.LightGray, fontSize = 11.sp)
-                                Slider(value = tabBlur[key] ?: 0f, onValueChange = { tabBlur[key] = it; prefs.edit().putFloat("blur_" + key, it).apply() }, valueRange = 0f..24f)
-                            }
-                            Text(tr("اللغة", "Language"), color = Color.White, fontWeight = FontWeight.Bold)
-                            Row { FilterChip(selected = ar, onClick = { lang = "ar"; prefs.edit().putString("lang", lang).apply() }, label = { Text("العربية") }); Spacer(Modifier.width(8.dp)); FilterChip(selected = !ar, onClick = { lang = "en"; prefs.edit().putString("lang", lang).apply() }, label = { Text("English") }) }
-                            Row(Modifier.fillMaxWidth().padding(top = 18.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
-                                Column(Modifier.weight(1f)) {
-                                    Text(tr("إظهار وإخفاء المجلدات", "Folder visibility"), color = Color.White, fontWeight = FontWeight.Bold)
-                                    Text(tr("إخفاء ملفات مجلدات محددة مثل WhatsApp", "Hide audio files from selected folders, e.g. WhatsApp"), color = Color.LightGray, fontSize = 11.sp)
-                                }
-                                TextButton(onClick = { showFoldersDialog = true }) { Text(tr("إدارة", "Manage")) }
-                            }
-                            Text(tr("الثيمات — 10 تصاميم", "Themes — 10 designs"), color = Color.White, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 10.dp, bottom = 8.dp))
-                            appThemes.forEachIndexed { i, item -> Row(Modifier.fillMaxWidth().padding(vertical = 4.dp).clip(RoundedCornerShape(13.dp)).background(th.panel).clickable { themeNo = i; prefs.edit().putInt("theme", i).apply() }.padding(12.dp), verticalAlignment = Alignment.CenterVertically) { Box(Modifier.size(28.dp).clip(CircleShape).background(item.accent)); Text(item.name, color = Color.White, modifier = Modifier.weight(1f).padding(horizontal = 12.dp)); if (themeNo == i) Icon(Icons.Rounded.Check, null, tint = th.accent) } }
+                            Text(tr("الإعدادات", "Settings"), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp, modifier = Modifier.padding(bottom = 12.dp))
+                            SettingsCategoryCard(tr("المظهر واللغة", "Appearance & language"), tr("اختيار اللغة ولون التطبيق والثيم", "Choose language, app color and theme"), Icons.Rounded.Palette, th) { settingsSection = "appearance" }
+                            SettingsCategoryCard(tr("الخلفيات والمؤثرات", "Backgrounds & effects"), tr("صورة مستقلة لكل واجهة مع التحكم بالتعتيم والتمويه", "Separate image per tab with dim and blur controls"), Icons.Rounded.Wallpaper, th) { settingsSection = "backgrounds" }
+                            SettingsCategoryCard(tr("إظهار وإخفاء المجلدات", "Folder visibility"), tr("اختيار المجلدات التي تظهر ملفاتها في المكتبة", "Choose which folders appear in your library"), Icons.Rounded.FolderOpen, th) { showFoldersDialog = true }
+                            SettingsCategoryCard(tr("الصوت والتشغيل", "Audio & playback"), tr("الموازن الصوتي والتكرار والتشغيل العشوائي", "Equalizer, repeat and shuffle"), Icons.Rounded.Equalizer, th) { settingsSection = "playback" }
+                            SettingsCategoryCard(tr("مكتبة الصوت", "Audio library"), tr("تحديث وفحص ملفات الصوت في الهاتف", "Refresh and scan audio files on your phone"), Icons.Rounded.LibraryMusic, th) { refresh() }
                         }
                         "lists" -> {
                             Row(verticalAlignment = Alignment.CenterVertically) {
@@ -414,7 +396,73 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                     }
             }
         }
+    } 
+    if (settingsSection.isNotBlank()) {
+        val sectionTitle = when (settingsSection) {
+            "appearance" -> tr("المظهر واللغة", "Appearance & language")
+            "backgrounds" -> tr("الخلفيات والمؤثرات", "Backgrounds & effects")
+            else -> tr("الصوت والتشغيل", "Audio & playback")
+        }
+        AlertDialog(
+            onDismissRequest = { settingsSection = "" },
+            title = { Text(sectionTitle) },
+            text = {
+                Column(Modifier.fillMaxWidth().heightIn(max = 520.dp).verticalScroll(rememberScrollState())) {
+                    when (settingsSection) {
+                        "appearance" -> {
+                            Text(tr("لغة التطبيق", "App language"), color = th.accent, fontWeight = FontWeight.Bold)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                FilterChip(selected = ar, onClick = { lang = "ar"; prefs.edit().putString("lang", lang).apply() }, label = { Text("العربية") })
+                                Spacer(Modifier.width(8.dp))
+                                FilterChip(selected = !ar, onClick = { lang = "en"; prefs.edit().putString("lang", lang).apply() }, label = { Text("English") })
+                            }
+                            Spacer(Modifier.height(14.dp))
+                            Text(tr("لون التطبيق والثيم", "App color & theme"), color = th.accent, fontWeight = FontWeight.Bold)
+                            appThemes.forEachIndexed { i, item ->
+                                Row(Modifier.fillMaxWidth().padding(vertical = 4.dp).clip(RoundedCornerShape(12.dp)).background(if (themeNo == i) th.accent.copy(alpha = 0.16f) else th.panel).clickable { themeNo = i; prefs.edit().putInt("theme", i).apply() }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Box(Modifier.size(26.dp).clip(CircleShape).background(item.accent))
+                                    Text(item.name, color = Color.White, modifier = Modifier.weight(1f).padding(horizontal = 10.dp))
+                                    if (themeNo == i) Icon(Icons.Rounded.Check, null, tint = th.accent)
+                                }
+                            }
+                        }
+                        "backgrounds" -> {
+                            Text(tr("اختر صورة وخيارات التأثير لكل واجهة", "Choose an image and effects for each tab"), color = Color.LightGray, fontSize = 12.sp)
+                            tabKeys.forEach { key ->
+                                val label = if (ar) mapOf("home" to "الرئيسية", "music" to "الموسيقى", "quran" to "القرآن", "lists" to "القوائم", "settings" to "الإعدادات")[key].orEmpty() else key.replaceFirstChar { it.uppercase() }
+                                Text(label, color = th.accent, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp))
+                                Row(verticalAlignment = Alignment.CenterVertically) {
+                                    Text(if (tabBackgrounds[key].orEmpty().isBlank()) tr("لم يتم اختيار صورة", "No image selected") else tr("تم اختيار صورة", "Image selected"), color = Color.White, modifier = Modifier.weight(1f), fontSize = 12.sp)
+                                    TextButton(onClick = { backgroundPickerTab = key; backgroundPicker.launch(arrayOf("image/*")) }) { Text(tr("اختيار", "Choose")) }
+                                    if (tabBackgrounds[key].orEmpty().isNotBlank()) IconButton(onClick = { tabBackgrounds[key] = ""; prefs.edit().remove("bg_" + key).apply() }) { Icon(Icons.Rounded.Delete, null, tint = th.second) }
+                                }
+                                Text(tr("التعتيم", "Dim"), color = Color.White, fontSize = 11.sp)
+                                Slider(value = tabDim[key] ?: 0.42f, onValueChange = { tabDim[key] = it; prefs.edit().putFloat("dim_" + key, it).apply() }, valueRange = 0f..0.9f)
+                                Text(tr("التمويه", "Blur"), color = Color.White, fontSize = 11.sp)
+                                Slider(value = tabBlur[key] ?: 0f, onValueChange = { tabBlur[key] = it; prefs.edit().putFloat("blur_" + key, it).apply() }, valueRange = 0f..24f)
+                            }
+                        }
+                        "playback" -> {
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text(tr("الموازن الصوتي", "Equalizer"), color = Color.White, modifier = Modifier.weight(1f))
+                                TextButton(onClick = { settingsSection = ""; equalizerDialog = true }) { Text(tr("فتح", "Open")) }
+                            }
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text(tr("التكرار", "Repeat"), color = Color.White, modifier = Modifier.weight(1f))
+                                TextButton(onClick = cycleRepeat) { Text(when (repeatMode) { Player.REPEAT_MODE_ONE -> tr("مقطع واحد", "One"); Player.REPEAT_MODE_ALL -> tr("الكل", "All"); else -> tr("إيقاف", "Off") }) }
+                            }
+                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                Text(tr("التشغيل العشوائي", "Shuffle"), color = Color.White, modifier = Modifier.weight(1f))
+                                Switch(checked = shuffleEnabled, onCheckedChange = { toggleShuffle() })
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = { TextButton(onClick = { settingsSection = "" }) { Text(tr("تم", "Done")) } }
+        )
     }
+
     if (showFoldersDialog) {
         AlertDialog(
             onDismissRequest = { showFoldersDialog = false },
@@ -546,6 +594,20 @@ private fun Art(t: Track, m: Modifier, th: AppTheme) {
         if (t.cover != null) AsyncImage(t.cover, t.title, Modifier.fillMaxSize()) else Icon(if (t.quran) Icons.Rounded.MenuBook else Icons.Rounded.MusicNote, null, tint = th.accent, modifier = Modifier.size(30.dp))
     }
 }
+@Composable
+private fun SettingsCategoryCard(title: String, subtitle: String, icon: androidx.compose.ui.graphics.vector.ImageVector, th: AppTheme, onClick: () -> Unit) {
+    Card(Modifier.fillMaxWidth().padding(vertical = 5.dp).clickable { onClick() }, colors = CardDefaults.cardColors(containerColor = th.panel), shape = RoundedCornerShape(16.dp)) {
+        Row(Modifier.padding(15.dp), verticalAlignment = Alignment.CenterVertically) {
+            Icon(icon, null, tint = th.accent, modifier = Modifier.size(28.dp))
+            Column(Modifier.weight(1f).padding(horizontal = 13.dp)) {
+                Text(title, color = Color.White, fontWeight = FontWeight.SemiBold)
+                Text(subtitle, color = Color.LightGray, fontSize = 11.sp)
+            }
+            Icon(Icons.Rounded.ChevronRight, null, tint = th.accent)
+        }
+    }
+}
+
 @Composable
 private fun HomeDashboardTile(title: String, count: String, icon: androidx.compose.ui.graphics.vector.ImageVector, covers: List<Track>, modifier: Modifier, th: AppTheme, click: () -> Unit) {
     Card(modifier.height(112.dp).clickable { click() }, colors = CardDefaults.cardColors(containerColor = th.panel), shape = RoundedCornerShape(18.dp)) {
