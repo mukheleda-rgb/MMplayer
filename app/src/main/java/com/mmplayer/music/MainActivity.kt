@@ -1104,6 +1104,7 @@ private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: A
             PlayerNeighborCard(queue.getOrNull(carouselIndex - 1), th, false, { previous() }, Modifier.width(58.dp).height(104.dp))
             Box(Modifier.weight(1f).aspectRatio(1f).clip(RoundedCornerShape(24.dp)).background(Brush.linearGradient(listOf(th.panel, th.bg)))) {
                 AnimatedContent(targetState = track, transitionSpec = trackTransition(playerEffect), label = "player-artwork") { animatedArt -> Art(animatedArt, Modifier.fillMaxSize(), th) }
+                Art(track, Modifier.align(Alignment.BottomCenter).fillMaxWidth(0.72f).height(25.dp).graphicsLayer { scaleY = -1f; alpha = 0.14f }, th)
             }
             PlayerNeighborCard(queue.getOrNull(carouselIndex + 1), th, false, { next() }, Modifier.width(58.dp).height(104.dp))
         }
@@ -1173,7 +1174,7 @@ private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: A
 @Composable
 private fun PlayerNeighborCard(track: Track?, th: AppTheme, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
     if (track == null) {
-        Spacer(modifier.width(68.dp).height(86.dp))
+        Spacer(modifier.width(54.dp).height(86.dp))
     } else {
         Column(
             modifier.width(68.dp)
@@ -1184,9 +1185,9 @@ private fun PlayerNeighborCard(track: Track?, th: AppTheme, selected: Boolean, o
                 .padding(4.dp),
             horizontalAlignment = Alignment.CenterHorizontally
         ) {
-            Art(track, Modifier.size(58.dp), th)
+            Art(track, Modifier.size(46.dp), th)
             // A faint mirrored tail gives the side covers a glass-reflection finish.
-            Art(track, Modifier.size(58.dp, 15.dp).graphicsLayer {
+            Art(track, Modifier.size(46.dp, 11.dp).graphicsLayer {
                 scaleY = -1f
                 alpha = 0.20f
             }, th)
