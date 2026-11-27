@@ -608,7 +608,7 @@ private fun TrackRows(rows: List<Track>, current: Track?, th: AppTheme, play: (T
                             current?.id == t.id -> th.accent.copy(alpha = 0.24f)
                             else -> Color.Transparent
                         }
-                    )
+                    ),
                 verticalAlignment = Alignment.CenterVertically
             ) {
                 Row(Modifier.weight(1f).pointerInput(t.id) {
