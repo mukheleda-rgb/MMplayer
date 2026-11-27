@@ -722,6 +722,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
 
     if (showFoldersDialog) {
         AlertDialog(
+            colors = dialogColors,
             onDismissRequest = { showFoldersDialog = false },
             title = { Text(tr("إظهار وإخفاء المجلدات", "Show / hide folders")) },
             text = {
@@ -762,6 +763,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
     }
     if (equalizerDialog) {
         AlertDialog(
+            colors = dialogColors,
             onDismissRequest = { equalizerDialog = false },
             title = { Text(if (ar) "المعادل الصوتي" else "Equalizer") },
             text = {
@@ -789,7 +791,9 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
     if (dialog == "new" || dialog == "new_from_selection") AlertDialog(colors = dialogColors, onDismissRequest = { dialog = "" }, title = { Text(tr("قائمة جديدة", "New playlist"), color = primaryText) }, text = { OutlinedTextField(newName, { newName = it }, label = { Text(tr("اسم القائمة", "Playlist name")) }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = th.primaryText, unfocusedTextColor = th.primaryText, focusedBorderColor = th.accent, unfocusedBorderColor = th.secondaryText, focusedLabelColor = th.accent, unfocusedLabelColor = th.secondaryText, cursorColor = th.accent)) }, confirmButton = { TextButton(onClick = { if (newName.isNotBlank()) { val ids = if (dialog == "new_from_selection") selectedTrackIds.toList() else emptyList(); lists = lists + (newName.trim() to ids); putLists(ctx, lists); activeList = newName.trim(); selectedTrackIds = emptySet(); selectionMode = false }; newName = ""; dialog = "" }) { Text(tr("إنشاء", "Create")) } }, dismissButton = { TextButton(onClick = { dialog = ""; selectedTrackIds = emptySet(); selectionMode = false }) { Text(tr("إلغاء", "Cancel")) } })
     if (dialog == "add") AlertDialog(colors = dialogColors, onDismissRequest = { dialog = "" }, title = { Text(tr("إضافة إلى قائمة", "Add to playlist")) }, text = { Column { lists.keys.forEach { n -> TextButton(onClick = { val t = selected; if (t != null) { lists = lists + (n to (lists[n].orEmpty() + t.id).distinct()); putLists(ctx, lists) }; selected = null; dialog = "" }) { Text(n) } } } }, confirmButton = { TextButton(onClick = { dialog = ""; selected = null }) { Text(tr("إغلاق", "Close")) } })
     selected?.let { t ->
-        AlertDialog(onDismissRequest = { selected = null }, title = { Text(t.title, maxLines = 1) }, text = { Column {
+        AlertDialog(
+            colors = dialogColors,
+            onDismissRequest = { selected = null }, title = { Text(t.title, maxLines = 1) }, text = { Column {
             TextButton(onClick = { val updated = categoryOverrides + (t.id to !t.quran); categoryOverrides = updated; val json = JSONObject(); updated.forEach { (id, isQuran) -> json.put(id.toString(), isQuran) }; prefs.edit().putString("category_overrides", json.toString()).apply(); selected = null; Toast.makeText(ctx, if (t.quran) tr("تم نقل الملف إلى تصنيف الموسيقى", "File moved to Music") else tr("تم نقل الملف إلى تصنيف القرآن", "File moved to Quran"), Toast.LENGTH_SHORT).show() }) { Text(if (t.quran) tr("تغيير التصنيف إلى الموسيقى", "Change category to Music") else tr("تغيير التصنيف إلى القرآن", "Change category to Quran")) }
             TextButton(onClick = { dialog = "add" }) { Text(tr("إضافة إلى قائمة تشغيل", "Add to playlist")) }
             TextButton(onClick = { dialog = "new"; newName = "" }) { Text(tr("إنشاء قائمة جديدة", "Create new playlist")) }
@@ -797,7 +801,9 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
             TextButton(onClick = { lists = lists.mapValues { it.value - t.id }; putLists(ctx, lists); selected = null; Toast.makeText(ctx, tr("أزيل من القوائم فقط ولم يُحذف من الجهاز", "Removed from playlists only; file retained"), Toast.LENGTH_LONG).show() }) { Text(tr("إزالة من القوائم", "Remove from playlists")) }
             TextButton(onClick = { Toast.makeText(ctx, tr("تغيير اسم الملف الأصلي يحتاج إذن Android خاصاً؛ لم يتم تغيير الملف", "Renaming the original file requires Android permission; file unchanged"), Toast.LENGTH_LONG).show() }) { Text(tr("تعديل الاسم / الخصائص", "Edit name / properties")) }
         } }, confirmButton = { TextButton(onClick = { selected = null }) { Text(tr("إغلاق", "Close")) } })
-        if (dialog == "details") AlertDialog(onDismissRequest = { dialog = "" }, title = { Text(tr("تفاصيل الملف", "File details")) }, text = { Column { Text(tr("الفنان", "Artist") + ": " + t.artist); Text(tr("المدة", "Duration") + ": " + time(t.duration)); Text(tr("الحجم", "Size") + ": " + sizeText(t.size)); Text(tr("الموقع", "Location") + ": " + t.path) } }, confirmButton = { TextButton(onClick = { dialog = ""; selected = null }) { Text("OK") } })
+        if (dialog == "details") AlertDialog(
+            colors = dialogColors,
+            onDismissRequest = { dialog = "" }, title = { Text(tr("تفاصيل الملف", "File details")) }, text = { Column { Text(tr("الفنان", "Artist") + ": " + t.artist); Text(tr("المدة", "Duration") + ": " + time(t.duration)); Text(tr("الحجم", "Size") + ": " + sizeText(t.size)); Text(tr("الموقع", "Location") + ": " + t.path) } }, confirmButton = { TextButton(onClick = { dialog = ""; selected = null }) { Text("OK") } })
     }
 }
 
