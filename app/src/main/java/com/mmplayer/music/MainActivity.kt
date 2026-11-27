@@ -34,7 +34,6 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.animateFloat
-import androidx.compose.animation.core.animateColor
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.AnimatedContentTransitionScope
@@ -657,14 +656,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                             val last = visibleTracks.firstOrNull { it.id == prefs.getLong("last_track_id", -1L) }
                             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
                                 Box(Modifier.fillMaxWidth().height(170.dp), contentAlignment = Alignment.Center) {
-                                    val logoPulse = rememberInfiniteTransition(label = "home-logo-pulse")
-                                    val logoScale by logoPulse.animateFloat(0.985f, 1.025f, infiniteRepeatable(tween(1800), RepeatMode.Reverse), label = "logo-scale")
-                                    val logoGlow by logoPulse.animateFloat(0.08f, 0.20f, infiniteRepeatable(tween(1800), RepeatMode.Reverse), label = "logo-glow")
-                                    val logoColor by logoPulse.animateColor(th.accent, Color(0xFF9B8BFF), infiniteRepeatable(tween(3200), RepeatMode.Reverse), label = "logo-color")
-                                    Text("MM", color = logoColor, fontSize = 62.sp, fontWeight = FontWeight.Black, letterSpacing = 5.sp,
-                                        modifier = Modifier.graphicsLayer { scaleX = logoScale; scaleY = logoScale }.drawBehind {
-                                            drawCircle(logoColor.copy(alpha = logoGlow), radius = size.maxDimension * 0.42f, center = center)
-                                        })
+                                    Text("MM", color = th.accent, fontSize = 62.sp, fontWeight = FontWeight.Black, letterSpacing = 5.sp)
                                     Text(tr("مساحتك الصوتية", "YOUR AUDIO SPACE"), color = th.accent, fontSize = 11.sp, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp), letterSpacing = 3.sp)
                                 }
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
