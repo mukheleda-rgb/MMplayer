@@ -72,21 +72,31 @@ class MainActivity : ComponentActivity() {
     private var tracks by mutableStateOf(listOf<Track>())
     private var current by mutableStateOf<Track?>(null)
     private var playing by mutableStateOf(false)
-    private val permission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { if (it) scan() }
+    private var libraryMessage by mutableStateOf("")
+    private val permission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
+        if (it) scan() else {
+            tracks = emptyList()
+            libraryMessage = "يجب السماح بالوصول إلى ملفات الصوت حتى تظهر الموسيقى"
+        }
+    }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         player = ExoPlayer.Builder(this).build()
+        setContent {
+            MMApp(tracks, current, playing, { play(it) }, { toggle() }, { step(1) }, { step(-1) }, { refreshLibrary() }, libraryMessage)
+        }
+        refreshLibrary()
+    }
+    private fun refreshLibrary() {
         val p = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
         if (ContextCompat.checkSelfPermission(this, p) == PackageManager.PERMISSION_GRANTED) scan() else permission.launch(p)
-        setContent {
-            MMApp(tracks, current, playing, { play(it) }, { toggle() }, { step(1) }, { step(-1) }, { scan() })
-        }
     }
     private fun scan() {
         val u = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
-        val cols = arrayOf(MediaStore.Audio.Media._ID, MediaStore.Audio.Media.TITLE, MediaStore.Audio.Media.ARTIST, MediaStore.Audio.Media.DURATION, MediaStore.Audio.Media.ALBUM_ID, MediaStore.Audio.Media.SIZE, MediaStore.Audio.Media.DATE_ADDED, MediaStore.Audio.Media.DATA, MediaStore.Audio.Media.IS_MUSIC)
+        val cols = arrayOf(MediaStore.Audio.Media._ID, MediaStore.Audio.Media.TITLE, MediaStore.Audio.Media.ARTIST, MediaStore.Audio.Media.DURATION, MediaStore.Audio.Media.ALBUM_ID, MediaStore.Audio.Media.SIZE, MediaStore.Audio.Media.DATE_ADDED, MediaStore.Audio.Media.DATA)
         val found = mutableListOf<Track>()
-        contentResolver.query(u, cols, MediaStore.Audio.Media.IS_MUSIC + " != 0", null, MediaStore.Audio.Media.TITLE + " COLLATE NOCASE ASC")?.use { c: Cursor ->
+        try {
+        contentResolver.query(u, cols, null, null, MediaStore.Audio.Media.TITLE + " COLLATE NOCASE ASC")?.use { c: Cursor ->
             while (c.moveToNext()) {
                 val id = c.getLong(c.getColumnIndexOrThrow(MediaStore.Audio.Media._ID))
                 val title = c.getString(c.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)) ?: "Unknown"
@@ -96,6 +106,13 @@ class MainActivity : ComponentActivity() {
             }
         }
         tracks = found
+        libraryMessage = if (found.isEmpty()) "لم يتم العثور على ملفات صوتية. تأكد من وجود ملفات موسيقى في الهاتف." else "تم العثور على " + found.size + " ملف صوتي"
+        } catch (e: SecurityException) {
+            tracks = emptyList()
+            libraryMessage = "لا توجد صلاحية للوصول إلى ملفات الصوت. اضغط تحديث واسمح بالوصول."
+        } catch (e: Exception) {
+            libraryMessage = "تعذر فحص ملفات الصوت: " + (e.localizedMessage ?: "خطأ غير معروف")
+        }
     }
     private fun play(t: Track) { current = t; player.setMediaItem(MediaItem.fromUri(t.uri)); player.prepare(); player.play(); playing = true }
     private fun toggle() { if (player.isPlaying) { player.pause(); playing = false } else if (current != null) { player.play(); playing = true } }
@@ -111,7 +128,7 @@ private fun getLists(c: Context): Map<String, List<Long>> = try {
 private fun putLists(c: Context, m: Map<String, List<Long>>) { val j = JSONObject(); m.forEach { (k, v) -> j.put(k, JSONArray(v)) }; c.getSharedPreferences("mmplayer", 0).edit().putString("lists", j.toString()).apply() }
 
 @Composable
-private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, play: (Track) -> Unit, toggle: () -> Unit, next: () -> Unit, previous: () -> Unit, refresh: () -> Unit) {
+private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, play: (Track) -> Unit, toggle: () -> Unit, next: () -> Unit, previous: () -> Unit, refresh: () -> Unit, libraryMessage: String) {
     val ctx = LocalContext.current
     val prefs = remember { ctx.getSharedPreferences("mmplayer", 0) }
     var lang by remember { mutableStateOf(prefs.getString("lang", "ar") ?: "ar") }
@@ -231,6 +248,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, play: 
                                     listOf("manual" to tr("يدوي", "Manual"), "name" to tr("الاسم", "Name"), "date" to tr("التاريخ", "Date"), "size" to tr("الحجم", "Size")).forEach { (v, label) -> DropdownMenuItem(text = { Text(label) }, onClick = { sort = v; sortMenu = false }) }
                                 } }
                             }
+                            if (tracks.isEmpty() || libraryMessage.isNotBlank()) Text(libraryMessage, color = if (tracks.isEmpty()) th.second else Color.LightGray, fontSize = 12.sp, modifier = Modifier.padding(vertical = 6.dp))
                             TrackRows(shown, current, th, play, { selected = it }, { a, b -> val ids = shown.map { it.id }.toMutableList(); if (a in ids.indices && b in ids.indices) { val v = ids.removeAt(a); ids.add(b, v); manual = ids; sort = "manual" } })
                         }
                     }
