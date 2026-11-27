@@ -200,7 +200,7 @@ class MainActivity : ComponentActivity() {
                 override fun onIsPlayingChanged(isPlaying: Boolean) { playing = isPlaying }
             })
             setContent {
-                MMApp(tracks, current, playing, activeQueue, { track, queue -> play(track, queue) }, { toggle() }, { step(1) }, { step(-1) }, { refreshLibrary() }, libraryMessage, repeatMode, { cycleRepeat() }, shuffleEnabled, { toggleShuffle() }, equalizerEnabled, equalizerLevels, equalizerRange, { updateEqualizerEnabled(it) }, { band, level -> setEqualizerBand(band, level) }, currentPositionState, { position -> if (player.mediaItemCount > 0) player.seekTo(position.coerceIn(0L, player.duration.coerceAtLeast(0L))) }, { items, done -> requestDeleteTracks(items, done) })
+                MMApp(tracks, current, playing, activeQueue, { track, queue -> play(track, queue) }, { resumeLastTrack() }, { toggle() }, { step(1) }, { step(-1) }, { refreshLibrary() }, libraryMessage, repeatMode, { cycleRepeat() }, shuffleEnabled, { toggleShuffle() }, equalizerEnabled, equalizerLevels, equalizerRange, { updateEqualizerEnabled(it) }, { band, level -> setEqualizerBand(band, level) }, currentPositionState, { position -> if (player.mediaItemCount > 0) player.seekTo(position.coerceIn(0L, player.duration.coerceAtLeast(0L))) }, { items, done -> requestDeleteTracks(items, done) })
             }
             refreshLibrary()
             val ticker = android.os.Handler(mainLooper)
@@ -412,6 +412,32 @@ class MainActivity : ComponentActivity() {
         playing = true
         setupEqualizer()
     }
+    private fun resumeLastTrack() {
+        if (!::player.isInitialized) return
+        val prefs = getSharedPreferences("mmplayer", MODE_PRIVATE)
+        val lastId = prefs.getLong("last_track_id", -1L)
+        val track = tracks.firstOrNull { it.id == lastId } ?: return
+        val queue = tracks.filter { it.quran == track.quran }.distinctBy { it.id }.ifEmpty { listOf(track) }
+        val index = queue.indexOfFirst { it.id == track.id }.coerceAtLeast(0)
+        val savedPosition = prefs.getLong("last_position_ms", 0L).coerceAtLeast(0L)
+        val position = if (track.duration > 0L) savedPosition.coerceAtMost((track.duration - 1000L).coerceAtLeast(0L)) else savedPosition
+        activeQueue = queue
+        player.setMediaItems(
+            queue.map { item -> MediaItem.Builder().setUri(item.uri).setMediaMetadata(
+                MediaMetadata.Builder().setTitle(item.title).setArtist(item.artist)
+                    .apply { item.cover?.let { setArtworkUri(it) } }.build()
+            ).build() },
+            index,
+            position
+        )
+        player.repeatMode = repeatMode
+        player.shuffleModeEnabled = shuffleEnabled
+        player.prepare()
+        player.play()
+        current = track
+        playing = true
+        setupEqualizer()
+    }
     private fun toggle() { if (player.isPlaying) player.pause() else if (current != null) player.play() }
     private fun step(d: Int) {
         if (player.mediaItemCount > 0) {
@@ -452,7 +478,7 @@ class MainActivity : ComponentActivity() {
             equalizerLevels = equalizerLevels.toMutableList().also { if (band in it.indices) it[band] = level }
         } catch (_: Exception) { }
     }
-    override fun onPause() { super.onPause(); if (::player.isInitialized) getSharedPreferences("mmplayer", 0).edit().putLong("last_track_id", current?.id ?: -1L).putLong("last_position_ms", player.currentPosition).apply() }
+    override fun onPause() { super.onPause(); if (::player.isInitialized && current != null && player.mediaItemCount > 0) getSharedPreferences("mmplayer", 0).edit().putLong("last_track_id", current!!.id).putLong("last_position_ms", player.currentPosition).apply() }
     override fun onDestroy() { equalizer?.release(); controllerFuture?.let { MediaController.releaseFuture(it) }; controllerFuture = null; super.onDestroy() }
 }
 @Composable
@@ -492,7 +518,7 @@ private fun getLists(c: Context): Map<String, List<Long>> = try {
 private fun putLists(c: Context, m: Map<String, List<Long>>) { val j = JSONObject(); m.forEach { (k, v) -> j.put(k, JSONArray(v)) }; c.getSharedPreferences("mmplayer", 0).edit().putString("lists", j.toString()).apply() }
 
 @Composable
-private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, playerQueue: List<Track>, play: (Track, List<Track>) -> Unit, toggle: () -> Unit, next: () -> Unit, previous: () -> Unit, refresh: () -> Unit, libraryMessage: String, repeatMode: Int, cycleRepeat: () -> Unit, shuffleEnabled: Boolean, toggleShuffle: () -> Unit, equalizerEnabled: Boolean, equalizerLevels: List<Int>, equalizerRange: IntRange, setEqualizerEnabled: (Boolean) -> Unit, setEqualizerBand: (Int, Int) -> Unit, currentPositionMs: State<Long>, seekTo: (Long) -> Unit, deleteTracks: (List<Track>, (Boolean) -> Unit) -> Unit) {
+private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, playerQueue: List<Track>, play: (Track, List<Track>) -> Unit, resumeLast: () -> Unit, toggle: () -> Unit, next: () -> Unit, previous: () -> Unit, refresh: () -> Unit, libraryMessage: String, repeatMode: Int, cycleRepeat: () -> Unit, shuffleEnabled: Boolean, toggleShuffle: () -> Unit, equalizerEnabled: Boolean, equalizerLevels: List<Int>, equalizerRange: IntRange, setEqualizerEnabled: (Boolean) -> Unit, setEqualizerBand: (Int, Int) -> Unit, currentPositionMs: State<Long>, seekTo: (Long) -> Unit, deleteTracks: (List<Track>, (Boolean) -> Unit) -> Unit) {
     val ctx = LocalContext.current
     val prefs = remember { ctx.getSharedPreferences("mmplayer", 0) }
     var lang by remember { mutableStateOf(prefs.getString("lang", "ar") ?: "ar") }
@@ -869,7 +895,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                             CurrentPositionLabel(currentPositionMs, last?.id == current?.id, prefs.getLong("last_position_ms", 0L), secondaryText)
                                         }
                                         IconButton(onClick = previous) { Icon(Icons.Rounded.SkipPrevious, null, tint = th.accent) }
-                                        IconButton(onClick = { if (current == null && last != null) play(last, visibleTracks.filter { it.quran == last.quran }) else toggle() }) { Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null, tint = th.accent) }
+                                        IconButton(onClick = { if (last != null && current?.id != last.id) resumeLast() else toggle() }) { Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null, tint = th.accent) }
                                         IconButton(onClick = next) { Icon(Icons.Rounded.SkipNext, null, tint = th.accent) }
                                     }
                                 }
