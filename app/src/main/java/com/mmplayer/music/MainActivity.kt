@@ -29,6 +29,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.animateContentSize
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
@@ -43,6 +44,9 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.graphics.graphicsLayer
+import androidx.compose.ui.unit.IntOffset
+import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -650,34 +654,66 @@ private fun Tile(title: String, count: String, icon: androidx.compose.ui.graphic
 @Composable
 private fun TrackRows(rows: List<Track>, current: Track?, th: AppTheme, play: (Track) -> Unit, menu: (Track) -> Unit, move: (Int, Int) -> Unit) {
     var draggingId by remember { mutableStateOf<Long?>(null) }
-    LazyColumn(verticalArrangement = Arrangement.spacedBy(3.dp)) {
+    val listState = rememberLazyListState()
+    val currentMove by rememberUpdatedState(move)
+    LazyColumn(state = listState, verticalArrangement = Arrangement.spacedBy(3.dp)) {
         items(rows, key = { it.id }) { t ->
-            val i = rows.indexOfFirst { it.id == t.id }
-            var delta by remember(t.id) { mutableFloatStateOf(0f) }
-            var dragIndex by remember(t.id) { mutableIntStateOf(i) }
+            var dragOffset by remember(t.id) { mutableFloatStateOf(0f) }
+            var dragIndex by remember(t.id) { mutableIntStateOf(rows.indexOfFirst { it.id == t.id }) }
             val isDragging = draggingId == t.id
-            // Keep the drag callback fresh after every reorder/recomposition.
-            // Otherwise pointerInput can retain a callback that still uses the
-            // original row order, making the dragged item snap back.
-            val currentMove by rememberUpdatedState(move)
             Row(
                 Modifier.fillMaxWidth()
+                    .zIndex(if (isDragging) 2f else 0f)
+                    .offset { IntOffset(0, if (isDragging) dragOffset.toInt() else 0) }
+                    .graphicsLayer {
+                        val scale = if (isDragging) 1.045f else 1f
+                        scaleX = scale
+                        scaleY = scale
+                        shadowElevation = if (isDragging) 14.dp.toPx() else 0f
+                    }
                     .animateItemPlacement()
-                    .animateContentSize()
-                    .padding(vertical = 5.dp)
-                    .clip(RoundedCornerShape(12.dp))
+                    .clip(RoundedCornerShape(13.dp))
                     .background(
                         when {
-                            isDragging -> th.accent.copy(alpha = 0.32f)
+                            isDragging -> th.accent.copy(alpha = 0.38f)
                             current?.id == t.id -> th.accent.copy(alpha = 0.24f)
                             else -> Color.Transparent
                         }
-                    ),
+                    )
+                    .pointerInput(t.id) {
+                        detectDragGesturesAfterLongPress(
+                            onDragStart = {
+                                draggingId = t.id
+                                dragIndex = rows.indexOfFirst { it.id == t.id }.coerceAtLeast(0)
+                                dragOffset = 0f
+                            },
+                            onDragEnd = { draggingId = null; dragOffset = 0f },
+                            onDragCancel = { draggingId = null; dragOffset = 0f }
+                        ) { change, dragAmount ->
+                            dragOffset += dragAmount.y
+                            change.consume()
+                            val visible = listState.layoutInfo.visibleItemsInfo
+                            val own = visible.firstOrNull { it.key == t.id }
+                            if (own != null) {
+                                val draggedCenter = own.offset + own.size / 2f + dragOffset
+                                val below = visible.firstOrNull { it.index == dragIndex + 1 }
+                                val above = visible.firstOrNull { it.index == dragIndex - 1 }
+                                if (below != null && draggedCenter > below.offset + below.size / 2f) {
+                                    currentMove(dragIndex, dragIndex + 1)
+                                    dragIndex += 1
+                                    dragOffset -= own.size.toFloat()
+                                } else if (above != null && draggedCenter < above.offset + above.size / 2f) {
+                                    currentMove(dragIndex, dragIndex - 1)
+                                    dragIndex -= 1
+                                    dragOffset += own.size.toFloat()
+                                }
+                            }
+                        }
+                    }
+                    .padding(vertical = 5.dp, horizontal = 7.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(Modifier.weight(1f).pointerInput(t.id) {
-                    detectTapGestures(onTap = { play(t) }, onLongPress = { menu(t) })
-                }, verticalAlignment = Alignment.CenterVertically) {
+                Row(Modifier.weight(1f).clickable { play(t) }, verticalAlignment = Alignment.CenterVertically) {
                     Art(t, Modifier.size(46.dp), th)
                     Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
                         Text(t.title, color = if (current?.id == t.id) th.accent else Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
@@ -685,32 +721,7 @@ private fun TrackRows(rows: List<Track>, current: Track?, th: AppTheme, play: (T
                     }
                 }
                 IconButton(onClick = { menu(t) }) { Icon(Icons.Rounded.MoreVert, null, tint = Color.LightGray) }
-                Icon(
-                    Icons.Rounded.DragHandle,
-                    null,
-                    tint = if (isDragging) Color.White else th.accent,
-                    modifier = Modifier.padding(horizontal = 8.dp)
-                        .pointerInput(t.id, rows.size) {
-                            detectDragGestures(
-                                onDragStart = { draggingId = t.id; dragIndex = rows.indexOfFirst { it.id == t.id }; delta = 0f },
-                                onDragEnd = { draggingId = null; delta = 0f },
-                                onDragCancel = { draggingId = null; delta = 0f }
-                            ) { change, dragAmount ->
-                                delta += dragAmount.y
-                                while (delta >= 20f && dragIndex < rows.lastIndex) {
-                                    currentMove(dragIndex, dragIndex + 1)
-                                    dragIndex++
-                                    delta -= 20f
-                                }
-                                while (delta <= -20f && dragIndex > 0) {
-                                    currentMove(dragIndex, dragIndex - 1)
-                                    dragIndex--
-                                    delta += 20f
-                                }
-                                change.consume()
-                            }
-                        }
-                )
+                Icon(Icons.Rounded.DragHandle, null, tint = if (isDragging) Color.White else th.accent, modifier = Modifier.padding(horizontal = 8.dp))
             }
         }
     }
