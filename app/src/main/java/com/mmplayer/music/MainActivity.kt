@@ -555,12 +555,6 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                         if (bg.isNotBlank()) AsyncImage(model = Uri.parse(bg), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().blur((tabBlur[pageKey] ?: 0f).dp))
                         Box(Modifier.fillMaxSize().background(if (bg.isBlank()) Color.Transparent else Color.Black.copy(alpha = tabDim[pageKey] ?: 0.68f)))
                         Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-                            if (activeTab == "home") {
-                                Column(Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-                                    Text("MMplayer", style = androidx.compose.ui.text.TextStyle(brush = Brush.linearGradient(listOf(th.accent.copy(alpha = 0.96f), th.second.copy(alpha = 0.88f)))), fontSize = 25.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.4.sp)
-                                    Text("by MOKHALAD", style = androidx.compose.ui.text.TextStyle(brush = Brush.linearGradient(listOf(th.secondaryText.copy(alpha = 0.82f), th.accent.copy(alpha = 0.68f)))), fontSize = 9.sp, letterSpacing = 1.5.sp, fontWeight = FontWeight.Light)
-                                }
-                            }
                             Column(Modifier.weight(1f).fillMaxWidth()) {
                     when (activeTab) {
                         "settings" -> {
@@ -660,10 +654,41 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                             val popular = remember(visibleTracks, playCounts) { visibleTracks.sortedByDescending { playCounts[it.id] ?: 0 }.filter { (playCounts[it.id] ?: 0) > 0 }.take(10) }
                             val last = visibleTracks.firstOrNull { it.id == prefs.getLong("last_track_id", -1L) }
                             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
+                                val brandTransition = rememberInfiniteTransition(label = "brandGlow")
+                                val brandGlow by brandTransition.animateFloat(
+                                    initialValue = 0.35f,
+                                    targetValue = 1f,
+                                    animationSpec = infiniteRepeatable(tween(1800, easing = LinearEasing), RepeatMode.Reverse),
+                                    label = "brandGlowAlpha"
+                                )
                                 Box(Modifier.fillMaxWidth().height(170.dp), contentAlignment = Alignment.Center) {
                                     Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
-                                        Text("MMplayer", color = th.accent, fontSize = 46.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.5.sp)
-                                        Text("by MOKHALAD", color = th.accent.copy(alpha = 0.78f), fontSize = 10.sp, fontWeight = FontWeight.Light, letterSpacing = 2.2.sp)
+                                        Text(
+                                            "مساحتك الصوتية MMplayer",
+                                            style = androidx.compose.ui.text.TextStyle(
+                                                brush = Brush.linearGradient(listOf(th.accent, th.second, th.accent)),
+                                                shadow = androidx.compose.ui.graphics.Shadow(
+                                                    color = th.accent.copy(alpha = brandGlow * 0.85f),
+                                                    blurRadius = 22f
+                                                )
+                                            ),
+                                            fontSize = 30.sp,
+                                            fontWeight = FontWeight.ExtraBold,
+                                            letterSpacing = 0.1.sp
+                                        )
+                                        Text(
+                                            "by MOKHALAD",
+                                            style = androidx.compose.ui.text.TextStyle(
+                                                brush = Brush.linearGradient(listOf(th.second, th.accent)),
+                                                shadow = androidx.compose.ui.graphics.Shadow(
+                                                    color = th.second.copy(alpha = brandGlow * 0.55f),
+                                                    blurRadius = 12f
+                                                )
+                                            ),
+                                            fontSize = 10.sp,
+                                            fontWeight = FontWeight.Light,
+                                            letterSpacing = 2.2.sp
+                                        )
                                     }
                                 }
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
