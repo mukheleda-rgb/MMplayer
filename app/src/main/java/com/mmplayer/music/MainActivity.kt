@@ -112,8 +112,8 @@ import org.json.JSONArray
 import org.json.JSONObject
 import java.util.Locale
 
-data class Track(val id: Long, val title: String, val artist: String, val uri: Uri, val duration: Long, val quran: Boolean, val album: Long, val size: Long, val added: Long, val path: String) {
-    val cover: Uri? get() = if (album > 0) Uri.parse("content://media/external/audio/albumart/" + album) else null
+data class Track(val id: Long, val title: String, val artist: String, val uri: Uri, val duration: Long, val quran: Boolean, val album: Long, val size: Long, val added: Long, val path: String, val albumName: String = "", val customCover: Uri? = null) {
+    val cover: Uri? get() = customCover ?: if (album > 0) Uri.parse("content://media/external/audio/albumart/" + album) else null
 }
 data class AppTheme(val name: String, val accent: Color, val bg: Color, val panel: Color, val second: Color) { val primaryText: Color get() = if (bg == Color(0xFFF3F5F8)) Color(0xFF17202A) else Color.White; val secondaryText: Color get() = if (bg == Color(0xFFF3F5F8)) Color(0xFF5D6875) else Color(0xFFB8C0CC) }
 private val appThemes = listOf(
@@ -203,11 +203,26 @@ class MainActivity : ComponentActivity() {
             player.addListener(object : Player.Listener {
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
                     current = activeQueue.getOrNull(player.currentMediaItemIndex)
+                    if (fadeDurationMs > 0L) {
+                        val generation = ++fadeGeneration
+                        player.volume = 0f
+                        val started = android.os.SystemClock.elapsedRealtime()
+                        val fadeHandler = android.os.Handler(mainLooper)
+                        val fadeIn = object : Runnable {
+                            override fun run() {
+                                if (generation != fadeGeneration || isFinishing || isDestroyed) return
+                                val fraction = ((android.os.SystemClock.elapsedRealtime() - started).toFloat() / fadeDurationMs.coerceAtLeast(1L)).coerceIn(0f, 1f)
+                                player.volume = fraction
+                                if (fraction < 1f) fadeHandler.postDelayed(this, 40L) else player.volume = 1f
+                            }
+                        }
+                        fadeHandler.post(fadeIn)
+                    } else player.volume = 1f
                 }
                 override fun onIsPlayingChanged(isPlaying: Boolean) { playing = isPlaying }
             })
             setContent {
-                MMApp(tracks, current, playing, activeQueue, { track, queue -> play(track, queue) }, { resumeLastTrack() }, { toggle() }, { step(1) }, { step(-1) }, { refreshLibrary() }, libraryMessage, repeatMode, { cycleRepeat() }, shuffleEnabled, { toggleShuffle() }, equalizerEnabled, equalizerLevels, equalizerRange, { updateEqualizerEnabled(it) }, { band, level -> setEqualizerBand(band, level) }, currentPositionState, { position -> if (player.mediaItemCount > 0) player.seekTo(position.coerceIn(0L, player.duration.coerceAtLeast(0L))) }, { items, done -> requestDeleteTracks(items, done) })
+                MMApp(tracks, current, playing, activeQueue, { track, queue -> play(track, queue) }, { resumeLastTrack() }, { toggle() }, { step(1) }, { step(-1) }, { refreshLibrary() }, libraryMessage, repeatMode, { cycleRepeat() }, shuffleEnabled, { toggleShuffle() }, equalizerEnabled, equalizerLevels, equalizerRange, { updateEqualizerEnabled(it) }, { band, level -> setEqualizerBand(band, level) }, fadeDurationMs, { fadeDurationMs = it.coerceIn(0L, 8000L); getSharedPreferences("mmplayer", MODE_PRIVATE).edit().putLong("fade_duration_ms", fadeDurationMs).apply(); player.volume = 1f }, currentPositionState, { position -> if (player.mediaItemCount > 0) player.seekTo(position.coerceIn(0L, player.duration.coerceAtLeast(0L))) }, { items, done -> requestDeleteTracks(items, done) })
             }
             refreshLibrary()
             val ticker = android.os.Handler(mainLooper)
@@ -215,6 +230,10 @@ class MainActivity : ComponentActivity() {
                 override fun run() {
                     if (!isFinishing && !isDestroyed) {
                         currentPositionMs = if (player.mediaItemCount > 0) player.currentPosition else currentPositionMs
+                        if (fadeDurationMs > 0L && player.isPlaying && player.duration > 0L && player.currentMediaItemIndex < player.mediaItemCount - 1) {
+                            val remaining = player.duration - player.currentPosition
+                            if (remaining in 1..fadeDurationMs) player.volume = (remaining.toFloat() / fadeDurationMs).coerceIn(0f, 1f)
+                        }
                         ticker.postDelayed(this, 500)
                     }
                 }
@@ -322,7 +341,7 @@ class MainActivity : ComponentActivity() {
                         id, item.optString("title", "Unknown"), item.optString("artist", "Unknown artist"),
                         ContentUris.withAppendedId(MediaStore.Audio.Media.EXTERNAL_CONTENT_URI, id),
                         item.optLong("duration"), item.optBoolean("quran"),
-                        item.optLong("album"), item.optLong("size"), item.optLong("added"), item.optString("path")
+                        item.optLong("album"), item.optLong("size"), item.optLong("added"), item.optString("path"), item.optString("albumName"), item.optString("customCover").takeIf { it.isNotBlank() }?.let(Uri::parse)
                     ))
                 }
             }
@@ -335,7 +354,7 @@ class MainActivity : ComponentActivity() {
             array.put(JSONObject().apply {
                 put("id", t.id); put("title", t.title); put("artist", t.artist)
                 put("duration", t.duration); put("quran", t.quran); put("album", t.album)
-                put("size", t.size); put("added", t.added); put("path", t.path)
+                put("size", t.size); put("added", t.added); put("path", t.path); put("albumName", t.albumName); put("customCover", t.customCover?.toString() ?: "")
             })
         }
         getSharedPreferences("mmplayer", MODE_PRIVATE).edit().putString("library_cache_v1", array.toString()).apply()
@@ -525,7 +544,7 @@ private fun getLists(c: Context): Map<String, List<Long>> = try {
 private fun putLists(c: Context, m: Map<String, List<Long>>) { val j = JSONObject(); m.forEach { (k, v) -> j.put(k, JSONArray(v)) }; c.getSharedPreferences("mmplayer", 0).edit().putString("lists", j.toString()).apply() }
 
 @Composable
-private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, playerQueue: List<Track>, play: (Track, List<Track>) -> Unit, resumeLast: () -> Unit, toggle: () -> Unit, next: () -> Unit, previous: () -> Unit, refresh: () -> Unit, libraryMessage: String, repeatMode: Int, cycleRepeat: () -> Unit, shuffleEnabled: Boolean, toggleShuffle: () -> Unit, equalizerEnabled: Boolean, equalizerLevels: List<Int>, equalizerRange: IntRange, setEqualizerEnabled: (Boolean) -> Unit, setEqualizerBand: (Int, Int) -> Unit, currentPositionMs: State<Long>, seekTo: (Long) -> Unit, deleteTracks: (List<Track>, (Boolean) -> Unit) -> Unit) {
+private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, playerQueue: List<Track>, play: (Track, List<Track>) -> Unit, resumeLast: () -> Unit, toggle: () -> Unit, next: () -> Unit, previous: () -> Unit, refresh: () -> Unit, libraryMessage: String, repeatMode: Int, cycleRepeat: () -> Unit, shuffleEnabled: Boolean, toggleShuffle: () -> Unit, equalizerEnabled: Boolean, equalizerLevels: List<Int>, equalizerRange: IntRange, setEqualizerEnabled: (Boolean) -> Unit, setEqualizerBand: (Int, Int) -> Unit, fadeDurationMs: Long, setFadeDuration: (Long) -> Unit, currentPositionMs: State<Long>, seekTo: (Long) -> Unit, deleteTracks: (List<Track>, (Boolean) -> Unit) -> Unit) {
     val ctx = LocalContext.current
     val prefs = remember { ctx.getSharedPreferences("mmplayer", 0) }
     var lang by remember { mutableStateOf(prefs.getString("lang", "ar") ?: "ar") }
@@ -567,6 +586,14 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
     } }
     var hiddenFolders by remember { mutableStateOf(runCatching { val a = JSONArray(prefs.getString("hidden_folders", "[]") ?: "[]"); (0 until a.length()).map { a.getString(it) }.toSet() }.getOrDefault(emptySet())) }
     var showFoldersDialog by remember { mutableStateOf(false) }
+    var selectedFolder by remember { mutableStateOf("") }
+    var editingTrack by remember { mutableStateOf<Track?>(null) }
+    var editTitle by remember { mutableStateOf("") }
+    var editArtist by remember { mutableStateOf("") }
+    var editAlbum by remember { mutableStateOf("") }
+    var editCover by remember { mutableStateOf<Uri?>(null) }
+    var metadataEdits by remember { mutableStateOf(runCatching { val j = JSONObject(prefs.getString("track_metadata_edits", "{}") ?: "{}"); buildMap<Long, JSONObject> { j.keys().forEach { put(it.toLong(), j.getJSONObject(it)) } } }.getOrDefault(emptyMap())) }
+    val editCoverPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri -> if (uri != null) { runCatching { ctx.contentResolver.takePersistableUriPermission(uri, Intent.FLAG_GRANT_READ_URI_PERMISSION) }; editCover = uri } }
     var settingsSection by remember { mutableStateOf("") }
     var playerEffect by remember { mutableStateOf(prefs.getString("player_effect", "glow") ?: "glow") }
     var playerTheme by remember { mutableStateOf(prefs.getString("player_theme", "3d") ?: "3d") }
@@ -588,7 +615,12 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
         } catch (_: Exception) { Toast.makeText(ctx, "تعذر حفظ الصورة", Toast.LENGTH_SHORT).show() }
     }
     val folderCounts = remember(tracks) { tracks.groupingBy { it.path.substringBeforeLast('/', "").ifBlank { "Unknown folder" } }.eachCount().toSortedMap() }
-    val visibleTracks = remember(tracks, categoryOverrides, hiddenFolders) { tracks.map { t -> categoryOverrides[t.id]?.let { t.copy(quran = it) } ?: t }.filter { it.path.substringBeforeLast('/', "").ifBlank { "Unknown folder" } !in hiddenFolders } }
+    val activeFolderCounts = remember(pageBase) { pageBase.groupingBy { it.path.substringBeforeLast("/", "").ifBlank { "Unknown folder" } }.eachCount().toSortedMap() }
+    val visibleTracks = remember(tracks, categoryOverrides, hiddenFolders, metadataEdits) { tracks.map { original ->
+        val t = categoryOverrides[original.id]?.let { original.copy(quran = it) } ?: original
+        val edit = metadataEdits[t.id]
+        if (edit == null) t else t.copy(title = edit.optString("title", t.title), artist = edit.optString("artist", t.artist), albumName = edit.optString("album", t.albumName), customCover = edit.optString("cover").takeIf { it.isNotBlank() }?.let(Uri::parse) ?: t.customCover)
+    }.filter { it.path.substringBeforeLast('/', "").ifBlank { "Unknown folder" } !in hiddenFolders } }
     val darkMode = when (themeMode) { "light" -> false; "system" -> isSystemInDarkTheme(); else -> true }
     val baseTheme = appThemes[themeNo]
     val th = if (darkMode) baseTheme else baseTheme.copy(bg = Color(0xFFF3F5F8), panel = Color.White, second = Color(0xFF596575))
@@ -680,7 +712,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                         "playlist" -> lists[activeList].orEmpty().mapNotNull { id -> visibleTracks.firstOrNull { it.id == id } }
                         else -> visibleTracks.filter { !it.quran }
                     } }
-                    val pageFiltered = remember(pageBase, search, favoritesOnly, favoriteIds, quranReciter, activeTab) { pageBase.filter { (it.title.contains(search, true) || it.artist.contains(search, true)) && (!favoritesOnly || it.id in favoriteIds) && (activeTab != "quran" || quranReciter.isBlank() || it.artist == quranReciter) } }
+                    val pageFiltered = remember(pageBase, search, favoritesOnly, favoriteIds, quranReciter, activeTab, selectedFolder) { pageBase.filter { (it.title.contains(search, true) || it.artist.contains(search, true)) && (!favoritesOnly || it.id in favoriteIds) && (activeTab != "quran" || quranReciter.isBlank() || it.artist == quranReciter) && (selectedFolder.isBlank() || it.path.substringBeforeLast("/", "").ifBlank { "Unknown folder" } == selectedFolder) } }
                     val pageShown = remember(pageFiltered, sort, manual, playCounts) { when (sort) {
                         "name" -> pageFiltered.sortedBy { it.title.lowercase() }
                         "artist" -> pageFiltered.sortedBy { it.artist.lowercase() }
@@ -1013,6 +1045,16 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                 }
                                 Row(Modifier.fillMaxWidth().padding(bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Text(pageShown.size.toString() + " " + tr("ملف", "files"), color = secondaryText, fontSize = 11.sp, modifier = Modifier.weight(1f))
+                                    if (activeTab == "music" || activeTab == "quran") {
+                                        var folderMenuExpanded by remember { mutableStateOf(false) }
+                                        Box {
+                                            TextButton(onClick = { folderMenuExpanded = true }) { Icon(Icons.Rounded.FolderOpen, null, tint = th.accent); Text(if (selectedFolder.isBlank()) tr("كل المجلدات", "All folders") else selectedFolder.substringAfterLast("/"), maxLines = 1) }
+                                            DropdownMenu(expanded = folderMenuExpanded, onDismissRequest = { folderMenuExpanded = false }) {
+                                                DropdownMenuItem(text = { Text(tr("كل المجلدات", "All folders")) }, onClick = { selectedFolder = ""; folderMenuExpanded = false })
+                                                activeFolderCounts.forEach { (folder, count) -> DropdownMenuItem(text = { Text(folder.substringAfterLast("/") + " ($count)") }, onClick = { selectedFolder = folder; folderMenuExpanded = false }) }
+                                            }
+                                        }
+                                    }
                                     FilterChip(selected = favoritesOnly, onClick = { favoritesOnly = !favoritesOnly },
                                         label = { Text(tr("المفضلة", "Favorites"), fontSize = 11.sp) },
                                         leadingIcon = { Icon(Icons.Rounded.Favorite, null, modifier = Modifier.size(14.dp)) },
@@ -1191,6 +1233,10 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                 Text(tr("التشغيل العشوائي", "Shuffle"), color = primaryText, modifier = Modifier.weight(1f))
                                 Switch(checked = shuffleEnabled, onCheckedChange = { toggleShuffle() })
                             }
+                            Text(tr("التلاشي الصوتي بين المقاطع", "Track transition fade"), color = th.accent, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 14.dp))
+                            Text(tr("يخفض صوت نهاية المقطع تدريجياً ثم يرفع صوت المقطع التالي. ليس مزجاً متزامناً لمسارين.", "Gradually fades out the ending track and fades in the next. This is not simultaneous two-track mixing."), color = secondaryText, fontSize = 11.sp)
+                            Text(if (fadeDurationMs == 0L) tr("متوقف", "Off") else "${fadeDurationMs / 1000}s", color = primaryText)
+                            Slider(value = fadeDurationMs.toFloat(), onValueChange = { setFadeDuration((it / 500f).toLong() * 500L) }, valueRange = 0f..8000f, steps = 15)
                         }
                     }
                 }
@@ -1199,6 +1245,33 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
         )
     }
 
+    if (editingTrack != null) {
+        AlertDialog(
+            containerColor = th.panel, titleContentColor = th.primaryText, textContentColor = th.secondaryText,
+            onDismissRequest = { editingTrack = null }, title = { Text(tr("تعديل بيانات الملف", "Edit track information")) },
+            text = { Column(Modifier.fillMaxWidth().heightIn(max = 480.dp).verticalScroll(rememberScrollState())) {
+                OutlinedTextField(value = editTitle, onValueChange = { editTitle = it }, label = { Text(tr("اسم الأغنية", "Track title")) }, singleLine = true)
+                OutlinedTextField(value = editArtist, onValueChange = { editArtist = it }, label = { Text(tr("الفنان / القارئ", "Artist / reciter")) }, singleLine = true)
+                OutlinedTextField(value = editAlbum, onValueChange = { editAlbum = it }, label = { Text(tr("الألبوم", "Album")) }, singleLine = true)
+                Row(verticalAlignment = Alignment.CenterVertically) {
+                    Text(if (editCover == null) tr("الغلاف الأصلي", "Original artwork") else tr("تم اختيار غلاف مخصص", "Custom artwork selected"), color = secondaryText, modifier = Modifier.weight(1f), fontSize = 12.sp)
+                    TextButton(onClick = { editCoverPicker.launch(arrayOf("image/*")) }) { Text(tr("اختيار صورة", "Choose image")) }
+                }
+                if (editCover != null) TextButton(onClick = { editCover = null }) { Text(tr("إزالة الغلاف المخصص", "Remove custom artwork")) }
+                Text(tr("تحفظ هذه التعديلات داخل MMplayer وتؤثر على عرض المكتبة، ولا تغيّر وسوم الملف الأصلية.", "These edits are saved inside MMplayer and change the library display, not the original file tags."), color = secondaryText, fontSize = 11.sp)
+            } },
+            confirmButton = { TextButton(onClick = {
+                val t = editingTrack!!
+                val obj = JSONObject().put("title", editTitle.trim().ifBlank { t.title }).put("artist", editArtist.trim().ifBlank { t.artist }).put("album", editAlbum.trim()).put("cover", editCover?.toString() ?: "")
+                metadataEdits = metadataEdits + (t.id to obj)
+                val all = JSONObject(); metadataEdits.forEach { (id, value) -> all.put(id.toString(), value) }
+                prefs.edit().putString("track_metadata_edits", all.toString()).apply()
+                editingTrack = null
+                Toast.makeText(ctx, tr("تم حفظ بيانات الملف داخل التطبيق", "Track information saved in the app"), Toast.LENGTH_SHORT).show()
+            }) { Text(tr("حفظ", "Save")) } },
+            dismissButton = { TextButton(onClick = { editingTrack = null }) { Text(tr("إلغاء", "Cancel")) } }
+        )
+    }
     if (showFoldersDialog) {
         AlertDialog(
             containerColor = th.panel, titleContentColor = th.primaryText, textContentColor = th.secondaryText, iconContentColor = th.accent,
@@ -1259,6 +1332,11 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                 Text((level / 100).toString() + " dB")
                             }
                             Slider(value = level.toFloat().coerceIn(equalizerRange.first.toFloat(), equalizerRange.last.toFloat()), onValueChange = { setEqualizerBand(index, it.toInt()) }, valueRange = equalizerRange.first.toFloat()..equalizerRange.last.toFloat(), enabled = equalizerEnabled)
+                        }
+                    }
+                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+                        listOf("Bass" to listOf(900, 600, 0, 0, 200), "Rock" to listOf(500, 200, -200, 500, 800), "Pop" to listOf(-100, 300, 700, 200, -100), "Classical" to listOf(400, 200, -100, 300, 500), "Flat" to listOf(0, 0, 0, 0, 0)).forEach { (name, values) ->
+                            TextButton(onClick = { values.forEachIndexed { index, value -> if (index < equalizerLevels.size) setEqualizerBand(index, value.coerceIn(equalizerRange.first, equalizerRange.last)) }; setEqualizerEnabled(true) }, contentPadding = PaddingValues(horizontal = 5.dp)) { Text(name, fontSize = 10.sp, color = th.accent) }
                         }
                     }
                     if (equalizerLevels.isEmpty()) Text(if (ar) "المعادل غير متاح على هذا الجهاز حالياً." else "Equalizer is not currently available on this device.")
@@ -1395,11 +1473,11 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
             TextButton(onClick = { dialog = "details" }) { Text(tr("معلومات الملف وموقعه وحجمه", "File details, path and size")) }
             TextButton(onClick = { lists = lists.mapValues { it.value - t.id }; putLists(ctx, lists); selected = null; Toast.makeText(ctx, tr("أزيل من القوائم فقط ولم يُحذف من الجهاز", "Removed from playlists only; file retained"), Toast.LENGTH_LONG).show() }) { Text(tr("إزالة من قوائم التشغيل", "Remove from playlists only")) }
             TextButton(onClick = { deleteTargets = listOf(t); selected = null; dialog = "delete_tracks" }) { Text(tr("حذف نهائياً من الجهاز", "Permanently delete from device"), color = Color(0xFFFF7777)) }
-            TextButton(onClick = { Toast.makeText(ctx, tr("تغيير اسم الملف الأصلي يحتاج إذن Android خاصاً؛ لم يتم تغيير الملف", "Renaming the original file requires Android permission; file unchanged"), Toast.LENGTH_LONG).show() }) { Text(tr("تعديل الاسم / الخصائص", "Edit name / properties")) }
+            TextButton(onClick = { editingTrack = visibleTracks.firstOrNull { it.id == t.id } ?: t; editTitle = t.title; editArtist = t.artist; editAlbum = t.albumName; editCover = t.customCover }) { Text(tr("تعديل الاسم / الخصائص", "Edit name / properties")) }
         } }, confirmButton = { TextButton(onClick = { selected = null }) { Text(tr("إغلاق", "Close")) } })
         if (dialog == "details") AlertDialog(
             containerColor = th.panel, titleContentColor = th.primaryText, textContentColor = th.secondaryText, iconContentColor = th.accent,
-            onDismissRequest = { dialog = "" }, title = { Text(tr("تفاصيل الملف", "File details")) }, text = { Column { Text(tr("الفنان", "Artist") + ": " + t.artist); Text(tr("المدة", "Duration") + ": " + time(t.duration)); Text(tr("الحجم", "Size") + ": " + sizeText(t.size)); Text(tr("الموقع", "Location") + ": " + t.path) } }, confirmButton = { TextButton(onClick = { dialog = ""; selected = null }) { Text("OK") } })
+            onDismissRequest = { dialog = "" }, title = { Text(tr("تفاصيل الملف", "File details")) }, text = { Column { Text(tr("الفنان", "Artist") + ": " + t.artist); Text(tr("المدة", "Duration") + ": " + time(t.duration)); Text(tr("الحجم", "Size") + ": " + sizeText(t.size)); Text(tr("الألبوم", "Album") + ": " + t.albumName); Text(tr("الموقع", "Location") + ": " + t.path) } }, confirmButton = { TextButton(onClick = { dialog = ""; selected = null }) { Text("OK") } })
     }
 }
 
