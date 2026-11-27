@@ -661,8 +661,11 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                             val last = visibleTracks.firstOrNull { it.id == prefs.getLong("last_track_id", -1L) }
                             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
                                 Box(Modifier.fillMaxWidth().height(170.dp), contentAlignment = Alignment.Center) {
-                                    Text("MM", color = th.accent, fontSize = 62.sp, fontWeight = FontWeight.Black, letterSpacing = 5.sp)
-                                    Text(tr("مساحتك الصوتية", "YOUR AUDIO SPACE"), color = th.accent, fontSize = 11.sp, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp), letterSpacing = 3.sp)
+                                    Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.Center) {
+                                        Text("MMplayer", color = th.accent, fontSize = 46.sp, fontWeight = FontWeight.ExtraBold, letterSpacing = 0.5.sp)
+                                        Text("by MOKHALAD", color = th.secondaryText.copy(alpha = 0.88f), fontSize = 10.sp, fontWeight = FontWeight.Light, letterSpacing = 2.2.sp)
+                                    }
+                                    Text(tr("مساحتك الصوتية", "YOUR AUDIO SPACE"), color = th.accent.copy(alpha = 0.82f), fontSize = 10.sp, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp), letterSpacing = 3.sp)
                                 }
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
                                     HomeDashboardTile(tr("الموسيقى", "Music"), visibleTracks.count { !it.quran }.toString(), Icons.Rounded.MusicNote, visibleTracks.filter { !it.quran }.take(3), Modifier.weight(1f), th) { tab = "music" }
@@ -1157,15 +1160,26 @@ private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: A
             Text(if (ar) "قائمة التشغيل الحالية" else "Current playlist", color = th.accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
             Text(queue.size.toString() + " " + if (ar) "ملف" else "tracks", color = th.secondaryText, fontSize = 10.sp)
         }
-        LazyColumn(Modifier.fillMaxWidth().weight(0.72f, fill = false), contentPadding = PaddingValues(bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+        LazyRow(
+            Modifier.fillMaxWidth(),
+            contentPadding = PaddingValues(horizontal = 2.dp, vertical = 8.dp),
+            horizontalArrangement = Arrangement.spacedBy(10.dp)
+        ) {
             items(queue, key = { it.id }) { item ->
-                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (item.id == track.id) th.accent.copy(alpha = 0.18f) else th.panel.copy(alpha = 0.45f)).clickable { play(item) }.padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
-                    Art(item, Modifier.size(34.dp), th)
-                    Column(Modifier.weight(1f).padding(horizontal = 9.dp)) {
-                        Text(item.title, color = if (item.id == track.id) th.accent else th.primaryText, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(item.artist, color = th.secondaryText, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                    }
-                    if (item.id == track.id) Icon(Icons.Rounded.GraphicEq, null, tint = th.accent, modifier = Modifier.size(17.dp))
+                Column(
+                    Modifier.width(104.dp)
+                        .clip(RoundedCornerShape(13.dp))
+                        .background(if (item.id == track.id) th.accent.copy(alpha = 0.20f) else th.panel.copy(alpha = 0.72f))
+                        .border(if (item.id == track.id) 1.dp else 0.dp, if (item.id == track.id) th.accent.copy(alpha = 0.75f) else Color.Transparent, RoundedCornerShape(13.dp))
+                        .clickable { play(item) }
+                        .padding(8.dp),
+                    horizontalAlignment = Alignment.CenterHorizontally
+                ) {
+                    Art(item, Modifier.size(68.dp), th)
+                    Spacer(Modifier.height(5.dp))
+                    Text(item.title, color = if (item.id == track.id) th.accent else th.primaryText, fontSize = 10.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    Text(item.artist, color = th.secondaryText, fontSize = 8.sp, maxLines = 1, overflow = TextOverflow.Ellipsis, modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                    if (item.id == track.id) Icon(Icons.Rounded.GraphicEq, null, tint = th.accent, modifier = Modifier.size(15.dp))
                 }
             }
         }
