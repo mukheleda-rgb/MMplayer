@@ -496,7 +496,8 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                 )
                                 var sortMenu by remember { mutableStateOf(false) }
                                 Row(Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Text(shown.size.toString() + " " + tr("ملف", "files"), color = Color.LightGray, modifier = Modifier.weight(1f))
+                                    Text(shown.size.toString() + " " + tr("ملف", "files"), color = secondaryText, modifier = Modifier.weight(1f))
+                                    IconButton(onClick = { selectionMode = !selectionMode; if (!selectionMode) selectedTrackIds = emptySet() }) { Icon(if (selectionMode) Icons.Rounded.Close else Icons.Rounded.Checklist, tr("تحديد ملفات", "Select tracks"), tint = th.accent) }
                                     Box {
                                         TextButton(onClick = { sortMenu = true }) { Icon(Icons.Rounded.Sort, null); Text(tr("ترتيب", "Sort")) }
                                         DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
@@ -509,22 +510,24 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                 if (tracks.isEmpty() || libraryMessage.isNotBlank()) {
                                     Text(libraryMessage, color = if (tracks.isEmpty()) th.second else Color.LightGray, fontSize = 12.sp, modifier = Modifier.padding(vertical = 6.dp))
                                 }
-                                TrackRows(
-                                    rows = shown,
-                                    current = current,
-                                    th = th,
-                                    play = { play(it, base) },
-                                    menu = { selected = it },
+                                if (selectionMode) {
+                                    Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        Text(selectedTrackIds.size.toString() + " " + tr("محدد", "selected"), color = secondaryText, modifier = Modifier.weight(1f))
+                                        TextButton(enabled = selectedTrackIds.isNotEmpty(), onClick = { newName = ""; dialog = "new_from_selection" }) { Text(tr("إنشاء قائمة تشغيل", "Create playlist")) }
+                                        TextButton(onClick = { selectionMode = false; selectedTrackIds = emptySet() }) { Text(tr("إلغاء", "Cancel")) }
+                                    }
+                                }
+                                TrackLibraryView(
+                                    rows = shown, current = current, th = th, play = { play(it, base) }, menu = { selected = it },
                                     move = { a, b ->
                                         val ids = shown.map { it.id }.toMutableList()
                                         if (a in ids.indices && b in ids.indices) {
-                                            val v = ids.removeAt(a)
-                                            ids.add(b, v)
-                                            manual = ids
-                                            prefs.edit().putString("manual_order", JSONArray(ids).toString()).apply()
-                                            sort = "manual"
+                                            val v = ids.removeAt(a); ids.add(b, v); manual = ids
+                                            prefs.edit().putString("manual_order", JSONArray(ids).toString()).apply(); sort = "manual"
                                         }
                                     },
+                                    layout = libraryLayout, artShape = artworkShape, selectedIds = selectedTrackIds,
+                                    onToggleSelect = if (selectionMode) ({ t -> selectedTrackIds = if (t.id in selectedTrackIds) selectedTrackIds - t.id else selectedTrackIds + t.id }) else null,
                                     modifier = Modifier.weight(1f).fillMaxWidth()
                                 )
                             }
@@ -731,7 +734,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
             confirmButton = { TextButton(onClick = { equalizerDialog = false }) { Text(if (ar) "تم" else "Done") } }
         )
     }
-    if (dialog == "new") AlertDialog(onDismissRequest = { dialog = "" }, title = { Text(tr("قائمة جديدة", "New playlist")) }, text = { OutlinedTextField(newName, { newName = it }, label = { Text(tr("اسم القائمة", "Playlist name")) }) }, confirmButton = { TextButton(onClick = { if (newName.isNotBlank()) { lists = lists + (newName.trim() to emptyList()); putLists(ctx, lists); activeList = newName.trim() }; newName = ""; dialog = "" }) { Text(tr("إنشاء", "Create")) } }, dismissButton = { TextButton(onClick = { dialog = "" }) { Text(tr("إلغاء", "Cancel")) } })
+    if (dialog == "new" || dialog == "new_from_selection") AlertDialog(onDismissRequest = { dialog = "" }, title = { Text(tr("قائمة جديدة", "New playlist"), color = primaryText) }, text = { OutlinedTextField(newName, { newName = it }, label = { Text(tr("اسم القائمة", "Playlist name")) }) }, confirmButton = { TextButton(onClick = { if (newName.isNotBlank()) { val ids = if (dialog == "new_from_selection") selectedTrackIds.toList() else emptyList(); lists = lists + (newName.trim() to ids); putLists(ctx, lists); activeList = newName.trim(); selectedTrackIds = emptySet(); selectionMode = false }; newName = ""; dialog = "" }) { Text(tr("إنشاء", "Create")) } }, dismissButton = { TextButton(onClick = { dialog = ""; selectedTrackIds = emptySet(); selectionMode = false }) { Text(tr("إلغاء", "Cancel")) } })
     if (dialog == "add") AlertDialog(onDismissRequest = { dialog = "" }, title = { Text(tr("إضافة إلى قائمة", "Add to playlist")) }, text = { Column { lists.keys.forEach { n -> TextButton(onClick = { val t = selected; if (t != null) { lists = lists + (n to (lists[n].orEmpty() + t.id).distinct()); putLists(ctx, lists) }; selected = null; dialog = "" }) { Text(n) } } } }, confirmButton = { TextButton(onClick = { dialog = ""; selected = null }) { Text(tr("إغلاق", "Close")) } })
     selected?.let { t ->
         AlertDialog(onDismissRequest = { selected = null }, title = { Text(t.title, maxLines = 1) }, text = { Column {
@@ -860,8 +863,8 @@ private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: A
     }
 }
 @Composable
-private fun Art(t: Track, m: Modifier, th: AppTheme) {
-    Box(m.clip(RoundedCornerShape(13.dp)).background(th.panel), contentAlignment = Alignment.Center) {
+private fun Art(t: Track, m: Modifier, th: AppTheme, circular: Boolean = false) {
+    Box(m.clip(if (circular) CircleShape else RoundedCornerShape(13.dp)).background(th.panel), contentAlignment = Alignment.Center) {
         if (t.cover != null) { AsyncImage(model = t.cover, contentDescription = t.title, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop); Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.28f))) } else DefaultCoverArtwork(t, Modifier.fillMaxSize(), th)
     }
 }
@@ -919,7 +922,7 @@ private fun Tile(title: String, count: String, icon: androidx.compose.ui.graphic
 }
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
-private fun TrackRows(rows: List<Track>, current: Track?, th: AppTheme, play: (Track) -> Unit, menu: (Track) -> Unit, move: (Int, Int) -> Unit, modifier: Modifier = Modifier) {
+private fun TrackRows(rows: List<Track>, current: Track?, th: AppTheme, play: (Track) -> Unit, menu: (Track) -> Unit, move: (Int, Int) -> Unit, modifier: Modifier = Modifier, selectedIds: Set<Long> = emptySet(), onToggleSelect: ((Track) -> Unit)? = null, circular: Boolean = false) {
     var draggingId by remember { mutableStateOf<Long?>(null) }
     val listState = rememberLazyListState()
     val currentMove by rememberUpdatedState(move)
@@ -980,8 +983,9 @@ private fun TrackRows(rows: List<Track>, current: Track?, th: AppTheme, play: (T
                     .padding(vertical = 5.dp, horizontal = 7.dp),
                 verticalAlignment = Alignment.CenterVertically
             ) {
-                Row(Modifier.weight(1f).clickable { play(t) }, verticalAlignment = Alignment.CenterVertically) {
-                    Art(t, Modifier.size(46.dp), th)
+                Row(Modifier.weight(1f).clickable { if (onToggleSelect != null) onToggleSelect(t) else play(t) }, verticalAlignment = Alignment.CenterVertically) {
+                    if (onToggleSelect != null) Checkbox(checked = t.id in selectedIds, onCheckedChange = { onToggleSelect(t) })
+                    Art(t, Modifier.size(46.dp), th, circular)
                     Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
                         Text(t.title, color = if (current?.id == t.id) th.accent else Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
                         Text(t.artist + " • " + time(t.duration), color = Color.LightGray, fontSize = 11.sp, maxLines = 1)
@@ -994,6 +998,50 @@ private fun TrackRows(rows: List<Track>, current: Track?, th: AppTheme, play: (T
     }
 }
 
+
+@Composable
+private fun TrackLibraryView(rows: List<Track>, current: Track?, th: AppTheme, play: (Track) -> Unit, menu: (Track) -> Unit, move: (Int, Int) -> Unit, layout: String, artShape: String, selectedIds: Set<Long>, onToggleSelect: ((Track) -> Unit)?, modifier: Modifier = Modifier) {
+    val circular = artShape == "circle"
+    when (layout) {
+        "grid" -> LazyVerticalGrid(columns = GridCells.Fixed(3), modifier = modifier, contentPadding = PaddingValues(vertical = 6.dp), horizontalArrangement = Arrangement.spacedBy(8.dp), verticalArrangement = Arrangement.spacedBy(8.dp)) {
+            gridItems(rows, key = { it.id }) { t ->
+                Column(Modifier.clip(RoundedCornerShape(14.dp)).background(if (current?.id == t.id) th.accent.copy(alpha = .16f) else th.panel).clickable { if (onToggleSelect != null) onToggleSelect(t) else play(t) }.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                    Box {
+                        Art(t, Modifier.fillMaxWidth().aspectRatio(1f), th, circular)
+                        if (onToggleSelect != null) Checkbox(checked = t.id in selectedIds, onCheckedChange = { onToggleSelect(t) }, modifier = Modifier.align(Alignment.TopEnd))
+                    }
+                    Text(t.title, color = th.primaryText, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 12.sp)
+                    Text(time(t.duration), color = th.secondaryText, fontSize = 10.sp)
+                    IconButton(onClick = { menu(t) }, modifier = Modifier.size(32.dp)) { Icon(Icons.Rounded.MoreVert, null, tint = th.secondaryText) }
+                }
+            }
+        }
+        "free" -> {
+            val horizontal = rememberScrollState()
+            val vertical = rememberScrollState()
+            BoxWithConstraints(modifier = modifier) {
+                val canvasWidth = maxWidth * 2.15f
+                Column(Modifier.width(canvasWidth).horizontalScroll(horizontal).verticalScroll(vertical).padding(10.dp)) {
+                    rows.chunked(4).forEachIndexed { rowIndex, group ->
+                        Row(Modifier.fillMaxWidth().padding(start = if (rowIndex % 2 == 0) 0.dp else 48.dp, bottom = 18.dp), horizontalArrangement = Arrangement.spacedBy(22.dp)) {
+                            group.forEach { t ->
+                                Column(Modifier.width(112.dp).clip(RoundedCornerShape(18.dp)).background(if (current?.id == t.id) th.accent.copy(alpha = .18f) else th.panel).clickable { if (onToggleSelect != null) onToggleSelect(t) else play(t) }.padding(8.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Box {
+                                        Art(t, Modifier.size(76.dp), th, circular)
+                                        if (onToggleSelect != null) Checkbox(checked = t.id in selectedIds, onCheckedChange = { onToggleSelect(t) }, modifier = Modifier.align(Alignment.TopEnd))
+                                    }
+                                    Text(t.title, color = th.primaryText, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 11.sp)
+                                    Text(t.artist, color = th.secondaryText, maxLines = 1, overflow = TextOverflow.Ellipsis, fontSize = 9.sp)
+                                }
+                            }
+                        }
+                    }
+                }
+            }
+        }
+        else -> TrackRows(rows, current, th, play, menu, move, modifier, selectedIds, onToggleSelect, circular)
+    }
+}
 
 @Composable
 private fun DefaultCoverArtwork(track: Track, modifier: Modifier, th: AppTheme) {
