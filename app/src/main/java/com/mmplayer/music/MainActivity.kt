@@ -237,7 +237,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
             ctx.contentResolver.takePersistableUriPermission(uri, android.content.Intent.FLAG_GRANT_READ_URI_PERMISSION)
             tabBackgrounds[backgroundPickerTab] = uri.toString()
             prefs.edit().putString("bg_" + backgroundPickerTab, uri.toString()).apply()
-        } catch (_: Exception) { Toast.makeText(ctx, tr("تعذر حفظ الصورة", "Could not save image"), Toast.LENGTH_SHORT).show() }
+        } catch (_: Exception) { Toast.makeText(ctx, "تعذر حفظ الصورة", Toast.LENGTH_SHORT).show() }
     }
     val folderCounts = tracks.groupingBy { it.path.substringBeforeLast('/', "").ifBlank { "Unknown folder" } }.eachCount().toSortedMap()
     val visibleTracks = tracks.filter { it.path.substringBeforeLast('/', "").ifBlank { "Unknown folder" } !in hiddenFolders }
