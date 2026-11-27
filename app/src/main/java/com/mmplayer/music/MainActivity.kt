@@ -91,7 +91,7 @@ import coil.compose.AsyncImage
 import java.io.File
 import java.util.concurrent.Executors
 import coil.ImageLoader
-import coil.SingletonImageLoader
+import coil.Coil
 import coil.disk.DiskCache
 import coil.request.CachePolicy
 import coil.request.ImageRequest
@@ -152,7 +152,7 @@ class MainActivity : ComponentActivity() {
                     .build()
             }
             .build()
-        SingletonImageLoader.setUnsafe { artworkLoader }
+        Coil.setImageLoader(artworkLoader)
         val token = SessionToken(this, ComponentName(this, PlaybackService::class.java))
         val future = MediaController.Builder(this, token).buildAsync()
         controllerFuture = future
