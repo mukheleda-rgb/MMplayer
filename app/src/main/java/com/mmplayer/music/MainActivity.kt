@@ -27,9 +27,16 @@ import androidx.compose.animation.slideOutHorizontally
 import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.animation.core.tween
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.animateContentSize
+import androidx.compose.animation.scaleIn
+import androidx.compose.animation.scaleOut
 import androidx.compose.foundation.gestures.detectDragGestures
+import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -247,10 +254,14 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
     var hiddenFolders by remember { mutableStateOf(runCatching { val a = JSONArray(prefs.getString("hidden_folders", "[]") ?: "[]"); (0 until a.length()).map { a.getString(it) }.toSet() }.getOrDefault(emptySet())) }
     var showFoldersDialog by remember { mutableStateOf(false) }
     var settingsSection by remember { mutableStateOf("") }
+    var navigationEffect by remember { mutableStateOf(prefs.getString("navigation_effect", "card") ?: "card") }
+    var playerEffect by remember { mutableStateOf(prefs.getString("player_effect", "glow") ?: "glow") }
+    var playerTheme by remember { mutableStateOf(prefs.getString("player_theme", "glass") ?: "glass") }
+    var swipeTabsEnabled by remember { mutableStateOf(prefs.getBoolean("swipe_tabs", true)) }
     var backgroundPickerTab by remember { mutableStateOf("home") }
     val tabKeys = listOf("home", "music", "quran", "lists", "settings")
     val tabBackgrounds = remember { mutableStateMapOf<String, String>().apply { tabKeys.forEach { put(it, prefs.getString("bg_" + it, "") ?: "") } } }
-    val tabDim = remember { mutableStateMapOf<String, Float>().apply { tabKeys.forEach { put(it, prefs.getFloat("dim_" + it, 0.42f)) } } }
+    val tabDim = remember { mutableStateMapOf<String, Float>().apply { tabKeys.forEach { val saved = prefs.getFloat("dim_" + it, 0.68f); put(it, if (saved < 0.55f) 0.68f else saved) } } }
     val tabBlur = remember { mutableStateMapOf<String, Float>().apply { tabKeys.forEach { put(it, prefs.getFloat("blur_" + it, 0f)) } } }
     val backgroundPicker = rememberLauncherForActivityResult(ActivityResultContracts.OpenDocument()) { uri ->
         if (uri != null) try {
@@ -309,7 +320,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
     }
     MaterialTheme(colorScheme = darkColorScheme(primary = th.accent, secondary = th.second, background = th.bg, surface = th.panel)) {
         if (expanded && current != null) {
-            FullPlayer(current, playerQueue, playing, th, ar, { expanded = false }, toggle, next, previous, { play(it, playerQueue) }, repeatMode, cycleRepeat, shuffleEnabled, toggleShuffle, { equalizerDialog = true })
+            FullPlayer(current, playerQueue, playing, th, ar, playerEffect, playerTheme, { expanded = false }, toggle, next, previous, { play(it, playerQueue) }, repeatMode, cycleRepeat, shuffleEnabled, toggleShuffle, { equalizerDialog = true })
         } else {
             Scaffold(containerColor = th.bg, bottomBar = {
                 Column {
@@ -328,10 +339,22 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                     }
                 }
             }) { pad ->
-                Box(Modifier.fillMaxSize()) {
+                Box(Modifier.fillMaxSize().pointerInput(tab, swipeTabsEnabled) {
+                    if (swipeTabsEnabled) {
+                        var dragX = 0f
+                        detectHorizontalDragGestures(onDragEnd = {
+                            if (kotlin.math.abs(dragX) > 64f && tab in tabKeys) {
+                                val index = tabKeys.indexOf(tab)
+                                val nextIndex = if (dragX < 0f) (index + 1).coerceAtMost(tabKeys.lastIndex) else (index - 1).coerceAtLeast(0)
+                                if (nextIndex != index) tab = tabKeys[nextIndex]
+                            }
+                            dragX = 0f
+                        }, onDragCancel = { dragX = 0f }) { change, amount -> dragX += amount; change.consume() }
+                    }
+                }) {
                     val bg = tabBackgrounds[tab].orEmpty()
                     if (bg.isNotBlank()) AsyncImage(model = Uri.parse(bg), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().blur((tabBlur[tab] ?: 0f).dp))
-                    Box(Modifier.fillMaxSize().background(if (bg.isBlank()) th.bg else Color.Black.copy(alpha = tabDim[tab] ?: 0.42f)))
+                    Box(Modifier.fillMaxSize().background(if (bg.isBlank()) th.bg else Color.Black.copy(alpha = tabDim[tab] ?: 0.68f)))
                     Column(Modifier.fillMaxSize().animateContentSize(tween(260)).padding(pad).padding(horizontal = 16.dp)) {
                     if (tab != "home") {
                         Row(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -339,12 +362,24 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                             IconButton(onClick = refresh) { Icon(Icons.Rounded.Refresh, null, tint = Color.White) }
                         }
                     }
-                    when (tab) {
+                    AnimatedContent(targetState = tab, transitionSpec = {
+                        val forward = tabKeys.indexOf(targetState) >= tabKeys.indexOf(initialState)
+                        when (navigationEffect) {
+                            "slide" -> (slideInHorizontally(tween(260)) { if (forward) it else -it } + fadeIn(tween(220))) togetherWith (slideOutHorizontally(tween(220)) { if (forward) -it / 3 else it / 3 } + fadeOut(tween(180)))
+                            "fade" -> fadeIn(tween(320)) togetherWith fadeOut(tween(220))
+                            "zoom" -> (fadeIn(tween(260)) + scaleIn(initialScale = 0.88f, animationSpec = tween(260))) togetherWith (fadeOut(tween(200)) + scaleOut(targetScale = 0.94f, animationSpec = tween(200)))
+                            "vertical" -> (slideInVertically(tween(260)) { it / 3 } + fadeIn(tween(220))) togetherWith (slideOutVertically(tween(220)) { -it / 4 } + fadeOut(tween(180)))
+                            else -> (slideInHorizontally(tween(300)) { if (forward) it else -it } + fadeIn(tween(260)) + scaleIn(initialScale = 0.94f, animationSpec = tween(300))) togetherWith (slideOutHorizontally(tween(240)) { if (forward) -it / 4 else it / 4 } + fadeOut(tween(220)) + scaleOut(targetScale = 0.97f, animationSpec = tween(220)))
+                        }
+                    }, label = "tab-card-transition") { activeTab ->
+                    when (activeTab) {
                         "settings" -> {
                             Text(tr("الإعدادات", "Settings"), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp, modifier = Modifier.padding(bottom = 12.dp))
                             SettingsCategoryCard(tr("المظهر واللغة", "Appearance & language"), tr("اختيار اللغة ولون التطبيق والثيم", "Choose language, app color and theme"), Icons.Rounded.Palette, th) { settingsSection = "appearance" }
                             SettingsCategoryCard(tr("الخلفيات والمؤثرات", "Backgrounds & effects"), tr("صورة مستقلة لكل واجهة مع التحكم بالتعتيم والتمويه", "Separate image per tab with dim and blur controls"), Icons.Rounded.Wallpaper, th) { settingsSection = "backgrounds" }
                             SettingsCategoryCard(tr("إظهار وإخفاء المجلدات", "Folder visibility"), tr("اختيار المجلدات التي تظهر ملفاتها في المكتبة", "Choose which folders appear in your library"), Icons.Rounded.FolderOpen, th) { showFoldersDialog = true }
+                            SettingsCategoryCard(tr("التنقل والحركات", "Navigation & transitions"), tr("السحب بين التبويبات واختيار تأثير الانتقال", "Swipe between tabs and choose transition style"), Icons.Rounded.Swipe, th) { settingsSection = "navigation" }
+                            SettingsCategoryCard(tr("مظهر المشغل والمؤثرات", "Player themes & effects"), tr("اختيار شكل المشغل وحركة تغيير الملفات", "Choose player style and track-change animation"), Icons.Rounded.GraphicEq, th) { settingsSection = "player" }
                             SettingsCategoryCard(tr("الصوت والتشغيل", "Audio & playback"), tr("الموازن الصوتي والتكرار والتشغيل العشوائي", "Equalizer, repeat and shuffle"), Icons.Rounded.Equalizer, th) { settingsSection = "playback" }
                             SettingsCategoryCard(tr("مكتبة الصوت", "Audio library"), tr("تحديث وفحص ملفات الصوت في الهاتف", "Refresh and scan audio files on your phone"), Icons.Rounded.LibraryMusic, th) { refresh() }
                         }
@@ -398,7 +433,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                         "most" -> TrackRows(visibleTracks.sortedByDescending { playCounts[it.id] ?: 0 }.filter { (playCounts[it.id] ?: 0) > 0 }.take(10), current, th, { play(it, visibleTracks.filter { q -> q.quran == it.quran }) }, { selected = it }, { _, _ -> })
                         "recent" -> TrackRows(visibleTracks.sortedByDescending { it.added }.take(10), current, th, { play(it, visibleTracks.filter { q -> q.quran == it.quran }) }, { selected = it }, { _, _ -> })
                         else -> {
-                            if (tab == "playlist") Row(verticalAlignment = Alignment.CenterVertically) { Text(activeList, color = Color.White, modifier = Modifier.weight(1f)); IconButton(onClick = { exportFile.launch(activeList + ".m3u") }) { Icon(Icons.Rounded.FileDownload, null, tint = th.accent) } }
+                            if (activeTab == "playlist") Row(verticalAlignment = Alignment.CenterVertically) { Text(activeList, color = Color.White, modifier = Modifier.weight(1f)); IconButton(onClick = { exportFile.launch(activeList + ".m3u") }) { Icon(Icons.Rounded.FileDownload, null, tint = th.accent) } }
                             OutlinedTextField(search, { search = it }, Modifier.fillMaxWidth(), placeholder = { Text(tr("ابحث عن ملف صوتي", "Search audio")) }, leadingIcon = { Icon(Icons.Rounded.Search, null) }, singleLine = true)
                             var sortMenu by remember { mutableStateOf(false) }
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
@@ -411,6 +446,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                             TrackRows(shown, current, th, { play(it, base) }, { selected = it }, { a, b -> val ids = shown.map { it.id }.toMutableList(); if (a in ids.indices && b in ids.indices) { val v = ids.removeAt(a); ids.add(b, v); manual = ids; prefs.edit().putString("manual_order", JSONArray(ids).toString()).apply(); sort = "manual" } })
                         }
                     }
+                    }
                 }
                     }
             }
@@ -420,6 +456,8 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
         val sectionTitle = when (settingsSection) {
             "appearance" -> tr("المظهر واللغة", "Appearance & language")
             "backgrounds" -> tr("الخلفيات والمؤثرات", "Backgrounds & effects")
+            "navigation" -> tr("التنقل والحركات", "Navigation & transitions")
+            "player" -> tr("مظهر المشغل والمؤثرات", "Player themes & effects")
             else -> tr("الصوت والتشغيل", "Audio & playback")
         }
         AlertDialog(
@@ -456,9 +494,39 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                     if (tabBackgrounds[key].orEmpty().isNotBlank()) IconButton(onClick = { tabBackgrounds[key] = ""; prefs.edit().remove("bg_" + key).apply() }) { Icon(Icons.Rounded.Delete, null, tint = th.second) }
                                 }
                                 Text(tr("التعتيم", "Dim"), color = Color.White, fontSize = 11.sp)
-                                Slider(value = tabDim[key] ?: 0.42f, onValueChange = { tabDim[key] = it; prefs.edit().putFloat("dim_" + key, it).apply() }, valueRange = 0f..0.9f)
+                                Slider(value = tabDim[key] ?: 0.68f, onValueChange = { tabDim[key] = it; prefs.edit().putFloat("dim_" + key, it).apply() }, valueRange = 0.55f..0.96f)
                                 Text(tr("التمويه", "Blur"), color = Color.White, fontSize = 11.sp)
                                 Slider(value = tabBlur[key] ?: 0f, onValueChange = { tabBlur[key] = it; prefs.edit().putFloat("blur_" + key, it).apply() }, valueRange = 0f..24f)
+                            }
+                        }
+                        "navigation" -> {
+                            Text(tr("التنقل بالسحب الأفقي", "Swipe navigation"), color = th.accent, fontWeight = FontWeight.Bold)
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(tr("تفعيل السحب يميناً ويساراً", "Enable left / right swiping"), color = Color.White, modifier = Modifier.weight(1f))
+                                Switch(checked = swipeTabsEnabled, onCheckedChange = { swipeTabsEnabled = it; prefs.edit().putBoolean("swipe_tabs", it).apply() })
+                            }
+                            Text(tr("تأثير الانتقال بين التبويبات", "Tab transition effect"), color = th.accent, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 10.dp))
+                            listOf("card" to tr("بطاقة (افتراضي)", "Card (default)"), "slide" to tr("انزلاق", "Slide"), "fade" to tr("تلاشي", "Fade"), "zoom" to tr("تكبير وتصغير", "Zoom"), "vertical" to tr("انزلاق عمودي", "Vertical")).forEach { (value, label) ->
+                                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (navigationEffect == value) th.accent.copy(alpha = 0.16f) else Color.Transparent).clickable { navigationEffect = value; prefs.edit().putString("navigation_effect", value).apply() }.padding(9.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(label, color = Color.White, modifier = Modifier.weight(1f))
+                                    if (navigationEffect == value) Icon(Icons.Rounded.CheckCircle, null, tint = th.accent)
+                                }
+                            }
+                        }
+                        "player" -> {
+                            Text(tr("ثيم المشغل", "Player theme"), color = th.accent, fontWeight = FontWeight.Bold)
+                            listOf("glass" to tr("زجاجي", "Glass"), "classic" to tr("كلاسيكي", "Classic"), "neon" to tr("نيون", "Neon"), "minimal" to tr("بسيط", "Minimal")).forEach { (value, label) ->
+                                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (playerTheme == value) th.accent.copy(alpha = 0.16f) else Color.Transparent).clickable { playerTheme = value; prefs.edit().putString("player_theme", value).apply() }.padding(9.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(label, color = Color.White, modifier = Modifier.weight(1f))
+                                    if (playerTheme == value) Icon(Icons.Rounded.CheckCircle, null, tint = th.accent)
+                                }
+                            }
+                            Text(tr("تأثير تغيير الملف أثناء التشغيل", "Track-change effect"), color = th.accent, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp))
+                            listOf("glow" to tr("توهج نابض (افتراضي)", "Pulsing glow (default)"), "slide" to tr("انزلاق", "Slide"), "zoom" to tr("تكبير", "Zoom"), "fade" to tr("تلاشي", "Fade"), "flip" to tr("قلب البطاقة", "Card flip")).forEach { (value, label) ->
+                                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (playerEffect == value) th.accent.copy(alpha = 0.16f) else Color.Transparent).clickable { playerEffect = value; prefs.edit().putString("player_effect", value).apply() }.padding(9.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(label, color = Color.White, modifier = Modifier.weight(1f))
+                                    if (playerEffect == value) Icon(Icons.Rounded.CheckCircle, null, tint = th.accent)
+                                }
                             }
                         }
                         "playback" -> {
@@ -563,17 +631,28 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
 }
 
 @Composable
-private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: AppTheme, ar: Boolean, close: () -> Unit, toggle: () -> Unit, next: () -> Unit, previous: () -> Unit, play: (Track) -> Unit, repeatMode: Int, cycleRepeat: () -> Unit, shuffleEnabled: Boolean, toggleShuffle: () -> Unit, openEqualizer: () -> Unit) {
+private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: AppTheme, ar: Boolean, playerEffect: String, playerTheme: String, close: () -> Unit, toggle: () -> Unit, next: () -> Unit, previous: () -> Unit, play: (Track) -> Unit, repeatMode: Int, cycleRepeat: () -> Unit, shuffleEnabled: Boolean, toggleShuffle: () -> Unit, openEqualizer: () -> Unit) {
     var dx by remember { mutableFloatStateOf(0f) }; var dy by remember { mutableFloatStateOf(0f) }
-    Column(Modifier.fillMaxSize().background(th.bg).pointerInput(track.id) {
+    val pulseTransition = rememberInfiniteTransition(label = "player-pulse")
+    val pulseScale by pulseTransition.animateFloat(initialValue = 1f, targetValue = 1.035f, animationSpec = infiniteRepeatable(animation = tween(950), repeatMode = RepeatMode.Reverse), label = "cover-pulse")
+    val playerBackground = when (playerTheme) { "glass" -> th.panel; "neon" -> Color(0xFF080B12); "minimal" -> th.bg; else -> th.bg }
+    Column(Modifier.fillMaxSize().background(playerBackground).pointerInput(track.id) {
         detectDragGestures(onDragEnd = { if (dy > 85) close() else if (dx < -60) next() else if (dx > 60) previous(); dx = 0f; dy = 0f }) { change, d -> dx += d.x; dy += d.y; change.consume() }
     }.padding(horizontal = 20.dp)) {
         Box(Modifier.fillMaxWidth().padding(top = 14.dp), contentAlignment = Alignment.Center) { Box(Modifier.width(42.dp).height(5.dp).clip(CircleShape).background(Color.Gray)) }
         Row(Modifier.fillMaxWidth().padding(vertical = 15.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(onClick = close) { Icon(Icons.Rounded.KeyboardArrowDown, null, tint = Color.White) }; Text(if (ar) "قيد التشغيل" else "Now playing", color = Color.White, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center); Icon(Icons.Rounded.MoreHoriz, null, tint = Color.White) }
         Spacer(Modifier.weight(0.3f))
-        AnimatedContent(targetState = track, transitionSpec = { (slideInHorizontally { it / 3 } + fadeIn()) togetherWith (slideOutHorizontally { -it / 3 } + fadeOut()) }, label = "now-playing-track") { animatedTrack ->
+        AnimatedContent(targetState = track, transitionSpec = {
+            when (playerEffect) {
+                "fade" -> fadeIn(tween(360)) togetherWith fadeOut(tween(260))
+                "zoom" -> (fadeIn(tween(300)) + scaleIn(initialScale = 0.72f, animationSpec = tween(380))) togetherWith (fadeOut(tween(220)) + scaleOut(targetScale = 1.12f, animationSpec = tween(220)))
+                "flip" -> (slideInHorizontally(tween(360)) { it / 2 } + fadeIn(tween(300)) + scaleIn(initialScale = 0.86f)) togetherWith (slideOutHorizontally(tween(260)) { -it / 3 } + fadeOut(tween(220)) + scaleOut(targetScale = 0.9f, animationSpec = tween(220)))
+                "slide" -> (slideInHorizontally(tween(300)) { it / 3 } + fadeIn(tween(240))) togetherWith (slideOutHorizontally(tween(220)) { -it / 3 } + fadeOut(tween(180)))
+                else -> (fadeIn(tween(260)) + scaleIn(initialScale = 0.94f, animationSpec = tween(300))) togetherWith (fadeOut(tween(220)) + scaleOut(targetScale = 1.03f, animationSpec = tween(220)))
+            }
+        }, label = "now-playing-track") { animatedTrack ->
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Art(animatedTrack, Modifier.fillMaxWidth().aspectRatio(1f).padding(horizontal = 18.dp), th)
+                Art(animatedTrack, Modifier.fillMaxWidth().aspectRatio(1f).padding(horizontal = 18.dp).graphicsLayer { val scale = if (playerEffect == "glow" && playing) pulseScale else 1f; scaleX = scale; scaleY = scale }, th)
                 Spacer(Modifier.height(24.dp))
                 Text(animatedTrack.title, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(animatedTrack.artist, color = Color.LightGray, modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
@@ -610,7 +689,7 @@ private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: A
 @Composable
 private fun Art(t: Track, m: Modifier, th: AppTheme) {
     Box(m.clip(RoundedCornerShape(13.dp)).background(th.panel), contentAlignment = Alignment.Center) {
-        if (t.cover != null) AsyncImage(t.cover, t.title, Modifier.fillMaxSize()) else Icon(if (t.quran) Icons.Rounded.MenuBook else Icons.Rounded.MusicNote, null, tint = th.accent, modifier = Modifier.size(30.dp))
+        if (t.cover != null) { AsyncImage(model = t.cover, contentDescription = t.title, modifier = Modifier.fillMaxSize(), contentScale = ContentScale.Crop); Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = 0.28f))) } else Icon(if (t.quran) Icons.Rounded.MenuBook else Icons.Rounded.MusicNote, null, tint = th.accent, modifier = Modifier.size(30.dp))
     }
 }
 @Composable
