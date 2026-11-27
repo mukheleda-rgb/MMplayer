@@ -306,6 +306,12 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
     val th = if (darkMode) baseTheme else baseTheme.copy(bg = Color(0xFFF3F5F8), panel = Color.White, second = Color(0xFF596575))
     val primaryText = th.primaryText
     val secondaryText = th.secondaryText
+    val dialogColors = AlertDialogDefaults.colors(
+        containerColor = th.panel,
+        titleContentColor = th.primaryText,
+        textContentColor = th.secondaryText,
+        iconContentColor = th.accent
+    )
     val ar = lang == "ar"
     fun tr(a: String, e: String) = if (ar) a else e
 
@@ -595,6 +601,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
             else -> tr("الصوت والتشغيل", "Audio & playback")
         }
         AlertDialog(
+            colors = dialogColors,
             onDismissRequest = { settingsSection = "" },
             title = { Text(sectionTitle) },
             text = {
@@ -603,9 +610,9 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                         "appearance" -> {
                             Text(tr("لغة التطبيق", "App language"), color = th.accent, fontWeight = FontWeight.Bold)
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                FilterChip(selected = ar, onClick = { lang = "ar"; prefs.edit().putString("lang", lang).apply() }, label = { Text("العربية") })
+                                FilterChip(selected = ar, onClick = { lang = "ar"; prefs.edit().putString("lang", lang).apply() }, label = { Text("العربية") }, colors = FilterChipDefaults.filterChipColors(containerColor = th.bg, labelColor = th.secondaryText, selectedContainerColor = th.accent.copy(alpha = .22f), selectedLabelColor = th.accent))
                                 Spacer(Modifier.width(8.dp))
-                                FilterChip(selected = !ar, onClick = { lang = "en"; prefs.edit().putString("lang", lang).apply() }, label = { Text("English") })
+                                FilterChip(selected = !ar, onClick = { lang = "en"; prefs.edit().putString("lang", lang).apply() }, label = { Text("English") }, colors = FilterChipDefaults.filterChipColors(containerColor = th.bg, labelColor = th.secondaryText, selectedContainerColor = th.accent.copy(alpha = .22f), selectedLabelColor = th.accent))
                             }
                             Spacer(Modifier.height(14.dp))
                             Text(tr("نمط الإضاءة", "Appearance mode"), color = th.accent, fontWeight = FontWeight.Bold)
@@ -779,7 +786,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
             confirmButton = { TextButton(onClick = { equalizerDialog = false }) { Text(if (ar) "تم" else "Done") } }
         )
     }
-    if (dialog == "new" || dialog == "new_from_selection") AlertDialog(onDismissRequest = { dialog = "" }, title = { Text(tr("قائمة جديدة", "New playlist"), color = primaryText) }, text = { OutlinedTextField(newName, { newName = it }, label = { Text(tr("اسم القائمة", "Playlist name")) }) }, confirmButton = { TextButton(onClick = { if (newName.isNotBlank()) { val ids = if (dialog == "new_from_selection") selectedTrackIds.toList() else emptyList(); lists = lists + (newName.trim() to ids); putLists(ctx, lists); activeList = newName.trim(); selectedTrackIds = emptySet(); selectionMode = false }; newName = ""; dialog = "" }) { Text(tr("إنشاء", "Create")) } }, dismissButton = { TextButton(onClick = { dialog = ""; selectedTrackIds = emptySet(); selectionMode = false }) { Text(tr("إلغاء", "Cancel")) } })
+    if (dialog == "new" || dialog == "new_from_selection") AlertDialog(colors = dialogColors, onDismissRequest = { dialog = "" }, title = { Text(tr("قائمة جديدة", "New playlist"), color = primaryText) }, text = { OutlinedTextField(newName, { newName = it }, label = { Text(tr("اسم القائمة", "Playlist name")) }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = th.primaryText, unfocusedTextColor = th.primaryText, focusedBorderColor = th.accent, unfocusedBorderColor = th.secondaryText, focusedLabelColor = th.accent, unfocusedLabelColor = th.secondaryText, cursorColor = th.accent)) }, confirmButton = { TextButton(onClick = { if (newName.isNotBlank()) { val ids = if (dialog == "new_from_selection") selectedTrackIds.toList() else emptyList(); lists = lists + (newName.trim() to ids); putLists(ctx, lists); activeList = newName.trim(); selectedTrackIds = emptySet(); selectionMode = false }; newName = ""; dialog = "" }) { Text(tr("إنشاء", "Create")) } }, dismissButton = { TextButton(onClick = { dialog = ""; selectedTrackIds = emptySet(); selectionMode = false }) { Text(tr("إلغاء", "Cancel")) } })
     if (dialog == "add") AlertDialog(onDismissRequest = { dialog = "" }, title = { Text(tr("إضافة إلى قائمة", "Add to playlist")) }, text = { Column { lists.keys.forEach { n -> TextButton(onClick = { val t = selected; if (t != null) { lists = lists + (n to (lists[n].orEmpty() + t.id).distinct()); putLists(ctx, lists) }; selected = null; dialog = "" }) { Text(n) } } } }, confirmButton = { TextButton(onClick = { dialog = ""; selected = null }) { Text(tr("إغلاق", "Close")) } })
     selected?.let { t ->
         AlertDialog(onDismissRequest = { selected = null }, title = { Text(t.title, maxLines = 1) }, text = { Column {
