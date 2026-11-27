@@ -1122,6 +1122,20 @@ private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: A
                     }
                     Box(Modifier.align(Alignment.Center).size(22.dp).clip(CircleShape).background(Color(0xFFB8A0FF)).border(4.dp, Color(0xFF17151D), CircleShape))
                 }
+                // Subtle reflected edge beneath the main artwork.
+                Art(track, Modifier.align(Alignment.BottomCenter).fillMaxWidth(0.70f).height(34.dp).graphicsLayer {
+                    scaleY = -1f
+                    alpha = 0.16f
+                }, th)
+                val carouselIndex = queue.indexOfFirst { it.id == track.id }.let { if (it < 0) 0 else it }
+                PlayerNeighborCard(
+                    queue.getOrNull(carouselIndex - 1), th, false, { previous() },
+                    Modifier.align(Alignment.CenterStart).padding(start = 3.dp)
+                )
+                PlayerNeighborCard(
+                    queue.getOrNull(carouselIndex + 1), th, false, { next() },
+                    Modifier.align(Alignment.CenterEnd).padding(end = 3.dp)
+                )
             }
         }
         if (playerTheme == "wave" || playerTheme == "neon") WaveformBars(playing, playerAccent, Modifier.fillMaxWidth().height(40.dp).padding(top = 8.dp))
@@ -1170,26 +1184,29 @@ private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: A
         IconButton(onClick = openEqualizer) { Icon(Icons.Rounded.Equalizer, null, tint = playerAccent) }
         Spacer(Modifier.weight(0.2f))
         Text(if (ar) "قائمة التشغيل الحالية" else "Current playlist", color = th.accent, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
-        AnimatedContent(targetState = track, transitionSpec = {
-            val forward = queue.indexOfFirst { it.id == targetState.id } >= queue.indexOfFirst { it.id == initialState.id }
-            (slideInHorizontally(tween(280)) { width -> if (forward) width else -width } + fadeIn(tween(220))) togetherWith
-                (slideOutHorizontally(tween(280)) { width -> if (forward) -width else width } + fadeOut(tween(180)))
-        }, label = "three-track-carousel") { shownTrack ->
-            val shownIndex = queue.indexOfFirst { it.id == shownTrack.id }.let { if (it < 0) 0 else it }
-            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
-                PlayerNeighborCard(queue.getOrNull(shownIndex - 1), th, false) { previous() }
-                PlayerNeighborCard(shownTrack, th, true) { }
-                PlayerNeighborCard(queue.getOrNull(shownIndex + 1), th, false) { next() }
-            }
-        }
     }
 }
 @Composable
-private fun PlayerNeighborCard(track: Track?, th: AppTheme, selected: Boolean, onClick: () -> Unit) {
-    if (track == null) Spacer(Modifier.width(if (selected) 108.dp else 76.dp)) else {
-        Column(Modifier.width(if (selected) 108.dp else 76.dp).clip(RoundedCornerShape(13.dp)).background(if (selected) th.accent.copy(alpha = 0.13f) else Color.Transparent).clickable(enabled = !selected, onClick = onClick).padding(5.dp), horizontalAlignment = Alignment.CenterHorizontally) {
-            Art(track, Modifier.size(if (selected) 96.dp else 64.dp), th)
-            Text(track.title, color = if (selected) th.accent else th.secondaryText, fontSize = if (selected) 11.sp else 9.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
+private fun PlayerNeighborCard(track: Track?, th: AppTheme, selected: Boolean, onClick: () -> Unit, modifier: Modifier = Modifier) {
+    if (track == null) {
+        Spacer(modifier.width(68.dp).height(86.dp))
+    } else {
+        Column(
+            modifier.width(68.dp)
+                .graphicsLayer { alpha = 0.82f; scaleX = 0.94f; scaleY = 0.94f }
+                .clip(RoundedCornerShape(12.dp))
+                .background(th.panel.copy(alpha = 0.82f))
+                .clickable(onClick = onClick)
+                .padding(4.dp),
+            horizontalAlignment = Alignment.CenterHorizontally
+        ) {
+            Art(track, Modifier.size(58.dp), th)
+            // A faint mirrored tail gives the side covers a glass-reflection finish.
+            Art(track, Modifier.size(58.dp, 15.dp).graphicsLayer {
+                scaleY = -1f
+                alpha = 0.20f
+            }, th)
+            Text(track.title, color = th.secondaryText, fontSize = 8.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
         }
     }
 }
