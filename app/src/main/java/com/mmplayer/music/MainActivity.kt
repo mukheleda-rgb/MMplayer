@@ -153,6 +153,7 @@ class MainActivity : ComponentActivity() {
     private var fadeDurationMs by mutableLongStateOf(0L)
     private var fadeGeneration = 0
     private var libraryMessage by mutableStateOf("")
+    private var serviceConnectionError by mutableStateOf("")
     private val libraryExecutor = Executors.newSingleThreadExecutor()
     private val scanGeneration = AtomicInteger(0)
     private lateinit var artworkLoader: ImageLoader
@@ -194,10 +195,13 @@ class MainActivity : ComponentActivity() {
             MaterialTheme {
                 Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
                     Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                        CircularProgressIndicator()
+                        if (serviceConnectionError.isEmpty()) CircularProgressIndicator()
                         Spacer(Modifier.height(14.dp))
                         Text("MMplayer", fontSize = 24.sp, fontWeight = FontWeight.Black)
-                        Text("جارٍ تهيئة مشغل الصوت...", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                        Text(
+                            if (serviceConnectionError.isEmpty()) "جارٍ تهيئة مشغل الصوت..." else serviceConnectionError,
+                            color = MaterialTheme.colorScheme.onSurfaceVariant
+                        )
                     }
                 }
             }
@@ -220,7 +224,13 @@ class MainActivity : ComponentActivity() {
         controllerFuture = future
         future.addListener({
             if (isFinishing || isDestroyed) return@addListener
-            player = future.get()
+            player = try {
+                future.get()
+            } catch (error: Exception) {
+                serviceConnectionError = "تعذر الاتصال بخدمة التشغيل. أغلق التطبيق وافتحه مجدداً.\n" + (error.cause?.localizedMessage ?: error.localizedMessage.orEmpty())
+                return@addListener
+            }
+            serviceConnectionError = ""
             restorePlayerState()
             pendingExternalUri?.let { uri -> pendingExternalUri = null; openExternalAudio(uri) }
             player.addListener(object : Player.Listener {
