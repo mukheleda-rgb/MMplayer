@@ -142,7 +142,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, play: 
     var selected by remember { mutableStateOf<Track?>(null) }
     var newName by remember { mutableStateOf("") }
     var dialog by remember { mutableStateOf("") }
-    var manual by remember { mutableStateOf(listOf<Long>()) }
+    var manual by remember { mutableStateOf(runCatching { val a = JSONArray(prefs.getString("manual_order", "[]") ?: "[]"); (0 until a.length()).map { a.getLong(it) } }.getOrDefault(emptyList())) }
     val th = appThemes[themeNo]
     val ar = lang == "ar"
     fun tr(a: String, e: String) = if (ar) a else e
@@ -249,7 +249,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, play: 
                                 } }
                             }
                             if (tracks.isEmpty() || libraryMessage.isNotBlank()) Text(libraryMessage, color = if (tracks.isEmpty()) th.second else Color.LightGray, fontSize = 12.sp, modifier = Modifier.padding(vertical = 6.dp))
-                            TrackRows(shown, current, th, play, { selected = it }, { a, b -> val ids = shown.map { it.id }.toMutableList(); if (a in ids.indices && b in ids.indices) { val v = ids.removeAt(a); ids.add(b, v); manual = ids; sort = "manual" } })
+                            TrackRows(shown, current, th, play, { selected = it }, { a, b -> val ids = shown.map { it.id }.toMutableList(); if (a in ids.indices && b in ids.indices) { val v = ids.removeAt(a); ids.add(b, v); manual = ids; prefs.edit().putString("manual_order", JSONArray(ids).toString()).apply(); sort = "manual" } })
                         }
                     }
                 }
@@ -312,24 +312,67 @@ private fun Tile(title: String, count: String, icon: androidx.compose.ui.graphic
 }
 @Composable
 private fun TrackRows(rows: List<Track>, current: Track?, th: AppTheme, play: (Track) -> Unit, menu: (Track) -> Unit, move: (Int, Int) -> Unit) {
+    var draggingId by remember { mutableStateOf<Long?>(null) }
     LazyColumn(verticalArrangement = Arrangement.spacedBy(3.dp)) {
         items(rows, key = { it.id }) { t ->
-            val i = rows.indexOf(t); var delta by remember { mutableFloatStateOf(0f) }
-            Row(Modifier.fillMaxWidth().animateContentSize().padding(vertical = 5.dp).clip(RoundedCornerShape(12.dp)).background(if (current?.id == t.id) th.accent.copy(alpha = 0.16f) else Color.Transparent).border(if (current?.id == t.id) 1.dp else 0.dp, if (current?.id == t.id) th.accent else Color.Transparent, RoundedCornerShape(12.dp)), verticalAlignment = Alignment.CenterVertically) {
-                Row(Modifier.weight(1f).pointerInput(t.id) { detectTapGestures(onTap = { play(t) }, onLongPress = { menu(t) }) }, verticalAlignment = Alignment.CenterVertically) {
+            val i = rows.indexOfFirst { it.id == t.id }
+            var delta by remember(t.id) { mutableFloatStateOf(0f) }
+            val isDragging = draggingId == t.id
+            Row(
+                Modifier.fillMaxWidth()
+                    .animateItemPlacement()
+                    .animateContentSize()
+                    .padding(vertical = 5.dp)
+                    .clip(RoundedCornerShape(12.dp))
+                    .background(
+                        when {
+                            isDragging -> th.accent.copy(alpha = 0.32f)
+                            current?.id == t.id -> th.accent.copy(alpha = 0.16f)
+                            else -> Color.Transparent
+                        }
+                    )
+                    .border(
+                        if (isDragging || current?.id == t.id) 2.dp else 0.dp,
+                        if (isDragging) th.accent else if (current?.id == t.id) th.accent else Color.Transparent,
+                        RoundedCornerShape(12.dp)
+                    ),
+                verticalAlignment = Alignment.CenterVertically
+            ) {
+                Row(Modifier.weight(1f).pointerInput(t.id) {
+                    detectTapGestures(onTap = { play(t) }, onLongPress = { menu(t) })
+                }, verticalAlignment = Alignment.CenterVertically) {
                     Art(t, Modifier.size(46.dp), th)
-                    Column(Modifier.weight(1f).padding(horizontal = 10.dp)) { Text(t.title, color = if (current?.id == t.id) th.accent else Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis); Text(t.artist + " • " + time(t.duration), color = Color.LightGray, fontSize = 11.sp, maxLines = 1) }
+                    Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
+                        Text(t.title, color = if (current?.id == t.id) th.accent else Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(t.artist + " • " + time(t.duration), color = Color.LightGray, fontSize = 11.sp, maxLines = 1)
+                    }
                 }
                 IconButton(onClick = { menu(t) }) { Icon(Icons.Rounded.MoreVert, null, tint = Color.LightGray) }
-                var dragIndex by remember(t.id) { mutableIntStateOf(i) }
-                Icon(Icons.Rounded.DragHandle, null, tint = th.accent, modifier = Modifier.padding(horizontal = 8.dp).pointerInput(t.id, rows.size) {
-                    detectDragGestures(onDragStart = { dragIndex = i; delta = 0f }, onDragEnd = { delta = 0f }) { change, d ->
-                        delta += d.y
-                        while (delta >= 28f && dragIndex < rows.lastIndex) { move(dragIndex, dragIndex + 1); dragIndex++; delta -= 28f }
-                        while (delta <= -28f && dragIndex > 0) { move(dragIndex, dragIndex - 1); dragIndex--; delta += 28f }
-                        change.consume()
-                    }
-                })
+                Icon(
+                    Icons.Rounded.DragHandle,
+                    null,
+                    tint = if (isDragging) Color.White else th.accent,
+                    modifier = Modifier.padding(horizontal = 8.dp)
+                        .pointerInput(t.id, rows.size) {
+                            detectDragGestures(
+                                onDragStart = { draggingId = t.id; delta = 0f },
+                                onDragEnd = { draggingId = null; delta = 0f },
+                                onDragCancel = { draggingId = null; delta = 0f }
+                            ) { change, dragAmount ->
+                                delta += dragAmount.y
+                                while (delta >= 20f && i + 1 < rows.size) {
+                                    move(rows.indexOfFirst { it.id == t.id }, rows.indexOfFirst { it.id == t.id } + 1)
+                                    delta -= 20f
+                                }
+                                while (delta <= -20f && rows.indexOfFirst { it.id == t.id } > 0) {
+                                    val from = rows.indexOfFirst { it.id == t.id }
+                                    move(from, from - 1)
+                                    delta += 20f
+                                }
+                                change.consume()
+                            }
+                        }
+                )
             }
         }
     }
