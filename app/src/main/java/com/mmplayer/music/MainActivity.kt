@@ -147,7 +147,7 @@ class MainActivity : ComponentActivity() {
         artworkLoader = ImageLoader.Builder(applicationContext)
             .diskCache {
                 DiskCache.Builder()
-                    .directory(File(cacheDir, "mmplayer_artwork_cache"))
+                    .directory(File(filesDir, "mmplayer_artwork_cache"))
                     .maxSizeBytes(96L * 1024L * 1024L)
                     .build()
             }
