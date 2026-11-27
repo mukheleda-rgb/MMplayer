@@ -34,6 +34,7 @@ import androidx.compose.animation.core.tween
 import androidx.compose.animation.core.infiniteRepeatable
 import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.animateColor
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.AnimatedContentTransitionScope
@@ -555,15 +556,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                         if (bg.isNotBlank()) AsyncImage(model = Uri.parse(bg), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().blur((tabBlur[pageKey] ?: 0f).dp))
                         Box(Modifier.fillMaxSize().background(if (bg.isBlank()) Color.Transparent else Color.Black.copy(alpha = tabDim[pageKey] ?: 0.68f)))
                         Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-                            if (activeTab != "home") {
-                                Row(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Column(Modifier.weight(1f)) {
-                                        Text("MMplayer", color = primaryText, fontSize = 27.sp, fontWeight = FontWeight.Bold)
-                                        Text(when (activeTab) { "settings" -> tr("الإعدادات", "Settings"); "quran" -> tr("مكتبة القرآن", "Quran library"); "music" -> tr("مكتبة الموسيقى", "Music library"); "lists" -> tr("قوائم التشغيل", "Playlists"); "playlist" -> activeList; "most" -> tr("الأكثر تشغيلًا", "Most played"); "recent" -> tr("أُضيفت حديثاً", "Recently added"); else -> tr("مساحتك الصوتية", "Your audio space") }, color = th.accent)
-                                    }
-                                    IconButton(onClick = refresh) { Icon(Icons.Rounded.Refresh, null, tint = Color.White) }
-                                }
-                            }
+                            // The old app-title and refresh header is removed.
                             Column(Modifier.weight(1f).fillMaxWidth()) {
                     when (activeTab) {
                         "settings" -> {
@@ -665,11 +658,12 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
                                 Box(Modifier.fillMaxWidth().height(170.dp), contentAlignment = Alignment.Center) {
                                     val logoPulse = rememberInfiniteTransition(label = "home-logo-pulse")
-                                    val logoScale by logoPulse.animateFloat(0.985f, 1.025f, infiniteRepeatable(tween(1500), RepeatMode.Reverse), label = "logo-scale")
-                                    val logoGlow by logoPulse.animateFloat(0.10f, 0.28f, infiniteRepeatable(tween(1500), RepeatMode.Reverse), label = "logo-glow")
-                                    Text("MMplayer", color = primaryText, fontSize = 48.sp, fontWeight = FontWeight.ExtraBold,
+                                    val logoScale by logoPulse.animateFloat(0.985f, 1.025f, infiniteRepeatable(tween(1800), RepeatMode.Reverse), label = "logo-scale")
+                                    val logoGlow by logoPulse.animateFloat(0.08f, 0.20f, infiniteRepeatable(tween(1800), RepeatMode.Reverse), label = "logo-glow")
+                                    val logoColor by logoPulse.animateColor(th.accent, Color(0xFF9B8BFF), infiniteRepeatable(tween(3200), RepeatMode.Reverse), label = "logo-color")
+                                    Text("MM", color = logoColor, fontSize = 62.sp, fontWeight = FontWeight.Black, letterSpacing = 5.sp,
                                         modifier = Modifier.graphicsLayer { scaleX = logoScale; scaleY = logoScale }.drawBehind {
-                                            drawCircle(th.accent.copy(alpha = logoGlow), radius = size.maxDimension * 0.48f, center = center)
+                                            drawCircle(logoColor.copy(alpha = logoGlow), radius = size.maxDimension * 0.42f, center = center)
                                         })
                                     Text(tr("مساحتك الصوتية", "YOUR AUDIO SPACE"), color = th.accent, fontSize = 11.sp, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp), letterSpacing = 3.sp)
                                 }
@@ -712,34 +706,36 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                         IconButton(onClick = { exportFile.launch(activeList + ".m3u") }) { Icon(Icons.Rounded.FileDownload, null, tint = th.accent) }
                                     }
                                 }
-                                OutlinedTextField(
-                                    value = search,
-                                    onValueChange = { search = it },
-                                    modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
-                                    placeholder = { Text(tr("ابحث عن ملف صوتي", "Search audio")) },
-                                    leadingIcon = { Icon(Icons.Rounded.Search, null) },
-                                    singleLine = true
-                                )
                                 var sortMenu by remember { mutableStateOf(false) }
-                                Row(Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Text(pageShown.size.toString() + " " + tr("ملف", "files"), color = secondaryText, modifier = Modifier.weight(1f))
-                                    IconButton(onClick = { selectionMode = !selectionMode; if (!selectionMode) selectedTrackIds = emptySet() }) { Icon(if (selectionMode) Icons.Rounded.Close else Icons.Rounded.Checklist, tr("تحديد ملفات", "Select tracks"), tint = th.accent) }
+                                Row(Modifier.fillMaxWidth().padding(top = 5.dp, bottom = 5.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(3.dp)) {
+                                    OutlinedTextField(
+                                        value = search, onValueChange = { search = it },
+                                        modifier = Modifier.weight(1f).height(50.dp),
+                                        placeholder = { Text(tr("بحث", "Search"), fontSize = 12.sp, maxLines = 1) },
+                                        leadingIcon = { Icon(Icons.Rounded.Search, null, modifier = Modifier.size(18.dp)) },
+                                        singleLine = true,
+                                        textStyle = androidx.compose.ui.text.TextStyle(fontSize = 13.sp, color = th.primaryText),
+                                        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = th.primaryText, unfocusedTextColor = th.primaryText, focusedBorderColor = th.accent, unfocusedBorderColor = th.secondaryText.copy(alpha = .55f), cursorColor = th.accent)
+                                    )
                                     Box {
-                                        TextButton(onClick = { sortMenu = true }) { Icon(Icons.Rounded.Sort, null); Text(tr("ترتيب", "Sort")) }
+                                        IconButton(onClick = { sortMenu = true }, modifier = Modifier.size(40.dp)) { Icon(Icons.Rounded.Sort, tr("ترتيب الملفات", "Sort files"), tint = th.accent) }
                                         DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
-                                            listOf("manual" to tr("يدوي", "Manual"), "name" to tr("الاسم", "Name"), "date" to tr("التاريخ", "Date"), "size" to tr("الحجم", "Size")).forEach { (v, label) ->
-                                                DropdownMenuItem(text = { Text(label) }, onClick = { sort = v; sortMenu = false })
-                                            }
+                                            listOf("manual" to tr("يدوي", "Manual"), "name" to tr("الاسم", "Name"), "date" to tr("التاريخ", "Date"), "size" to tr("الحجم", "Size")).forEach { (v, label) -> DropdownMenuItem(text = { Text(label) }, onClick = { sort = v; sortMenu = false }) }
                                         }
                                     }
+                                    IconButton(onClick = { selectionMode = !selectionMode; if (!selectionMode) selectedTrackIds = emptySet() }, modifier = Modifier.size(40.dp)) {
+                                        Icon(if (selectionMode) Icons.Rounded.Close else Icons.Rounded.Checklist, tr("تحديد الملفات", "Select tracks"), tint = th.accent)
+                                    }
                                 }
+                                Text(pageShown.size.toString() + " " + tr("ملف", "files"), color = secondaryText, fontSize = 11.sp, modifier = Modifier.padding(bottom = 3.dp))
                                 if (tracks.isEmpty() || libraryMessage.isNotBlank()) {
                                     Text(libraryMessage, color = if (tracks.isEmpty()) th.second else Color.LightGray, fontSize = 12.sp, modifier = Modifier.padding(vertical = 6.dp))
                                 }
                                 if (selectionMode) {
                                     Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
                                         Text(selectedTrackIds.size.toString() + " " + tr("محدد", "selected"), color = secondaryText, modifier = Modifier.weight(1f))
-                                        TextButton(enabled = selectedTrackIds.isNotEmpty(), onClick = { newName = ""; dialog = "new_from_selection" }) { Text(tr("إنشاء قائمة تشغيل", "Create playlist")) }
+                                        TextButton(onClick = { selectedTrackIds = if (selectedTrackIds.size == pageShown.size) emptySet() else pageShown.map { it.id }.toSet() }) { Text(if (selectedTrackIds.size == pageShown.size) tr("إلغاء الكل", "Clear all") else tr("تحديد الكل", "Select all"), color = th.accent, fontSize = 11.sp) }
+                                        TextButton(enabled = selectedTrackIds.isNotEmpty(), onClick = { newName = ""; dialog = "new_from_selection" }) { Text(tr("إنشاء قائمة", "Create list"), fontSize = 11.sp) }
                                         TextButton(enabled = selectedTrackIds.isNotEmpty(), onClick = { deleteTargets = pageShown.filter { it.id in selectedTrackIds }; dialog = "delete_tracks" }) { Text(tr("حذف من الجهاز", "Delete from device"), color = Color(0xFFFF7777)) }
                                         TextButton(onClick = { selectionMode = false; selectedTrackIds = emptySet() }) { Text(tr("إلغاء", "Cancel")) }
                                     }
@@ -989,6 +985,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
             containerColor = th.panel, titleContentColor = th.primaryText, textContentColor = th.secondaryText, iconContentColor = th.accent,
             onDismissRequest = { selected = null }, title = { Text(t.title, maxLines = 1) }, text = { Column {
             TextButton(onClick = { val updated = categoryOverrides + (t.id to !t.quran); categoryOverrides = updated; val json = JSONObject(); updated.forEach { (id, isQuran) -> json.put(id.toString(), isQuran) }; prefs.edit().putString("category_overrides", json.toString()).apply(); selected = null; Toast.makeText(ctx, if (t.quran) tr("تم نقل الملف إلى تصنيف الموسيقى", "File moved to Music") else tr("تم نقل الملف إلى تصنيف القرآن", "File moved to Quran"), Toast.LENGTH_SHORT).show() }) { Text(if (t.quran) tr("تغيير التصنيف إلى الموسيقى", "Change category to Music") else tr("تغيير التصنيف إلى القرآن", "Change category to Quran")) }
+            TextButton(onClick = { selectionMode = true; selectedTrackIds = selectedTrackIds + t.id; selected = null }) { Text(tr("تحديد هذا الملف", "Select this track")) }
             TextButton(onClick = { dialog = "add" }) { Text(tr("إضافة إلى قائمة تشغيل", "Add to playlist")) }
             TextButton(onClick = { dialog = "new"; newName = "" }) { Text(tr("إنشاء قائمة جديدة", "Create new playlist")) }
             TextButton(onClick = { dialog = "details" }) { Text(tr("معلومات الملف وموقعه وحجمه", "File details, path and size")) }
