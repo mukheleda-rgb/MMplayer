@@ -182,7 +182,7 @@ class MainActivity : ComponentActivity() {
                 override fun onIsPlayingChanged(isPlaying: Boolean) { playing = isPlaying }
             })
             setContent {
-                MMApp(tracks, current, playing, activeQueue, { track, queue -> play(track, queue) }, { toggle() }, { step(1) }, { step(-1) }, { refreshLibrary() }, libraryMessage, repeatMode, { cycleRepeat() }, shuffleEnabled, { toggleShuffle() }, equalizerEnabled, equalizerLevels, equalizerRange, { updateEqualizerEnabled(it) }, { band, level -> setEqualizerBand(band, level) }, currentPositionState, { position -> if (player.mediaItemCount > 0) player.seekTo(position.coerceIn(0L, player.duration.coerceAtLeast(0L))) })
+                MMApp(tracks, current, playing, activeQueue, { track, queue -> play(track, queue) }, { toggle() }, { step(1) }, { step(-1) }, { refreshLibrary() }, libraryMessage, repeatMode, { cycleRepeat() }, shuffleEnabled, { toggleShuffle() }, equalizerEnabled, equalizerLevels, equalizerRange, { updateEqualizerEnabled(it) }, { band, level -> setEqualizerBand(band, level) }, currentPositionState, { position -> if (player.mediaItemCount > 0) player.seekTo(position.coerceIn(0L, player.duration.coerceAtLeast(0L))) }, { items, done -> requestDeleteTracks(items, done) })
             }
             refreshLibrary()
             val ticker = android.os.Handler(mainLooper)
@@ -389,7 +389,7 @@ private fun getLists(c: Context): Map<String, List<Long>> = try {
 private fun putLists(c: Context, m: Map<String, List<Long>>) { val j = JSONObject(); m.forEach { (k, v) -> j.put(k, JSONArray(v)) }; c.getSharedPreferences("mmplayer", 0).edit().putString("lists", j.toString()).apply() }
 
 @Composable
-private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, playerQueue: List<Track>, play: (Track, List<Track>) -> Unit, toggle: () -> Unit, next: () -> Unit, previous: () -> Unit, refresh: () -> Unit, libraryMessage: String, repeatMode: Int, cycleRepeat: () -> Unit, shuffleEnabled: Boolean, toggleShuffle: () -> Unit, equalizerEnabled: Boolean, equalizerLevels: List<Int>, equalizerRange: IntRange, setEqualizerEnabled: (Boolean) -> Unit, setEqualizerBand: (Int, Int) -> Unit, currentPositionMs: State<Long>, seekTo: (Long) -> Unit) {
+private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, playerQueue: List<Track>, play: (Track, List<Track>) -> Unit, toggle: () -> Unit, next: () -> Unit, previous: () -> Unit, refresh: () -> Unit, libraryMessage: String, repeatMode: Int, cycleRepeat: () -> Unit, shuffleEnabled: Boolean, toggleShuffle: () -> Unit, equalizerEnabled: Boolean, equalizerLevels: List<Int>, equalizerRange: IntRange, setEqualizerEnabled: (Boolean) -> Unit, setEqualizerBand: (Int, Int) -> Unit, currentPositionMs: State<Long>, seekTo: (Long) -> Unit, deleteTracks: (List<Track>, (Boolean) -> Unit) -> Unit) {
     val ctx = LocalContext.current
     val prefs = remember { ctx.getSharedPreferences("mmplayer", 0) }
     var lang by remember { mutableStateOf(prefs.getString("lang", "ar") ?: "ar") }
@@ -406,6 +406,8 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
     var lists by remember { mutableStateOf(getLists(ctx)) }
     var activeList by remember { mutableStateOf("") }
     var selected by remember { mutableStateOf<Track?>(null) }
+    var deleteTargets by remember { mutableStateOf<List<Track>>(emptyList()) }
+    var pendingDeletePlaylist by remember { mutableStateOf<String?>(null) }
     var newName by remember { mutableStateOf("") }
     var dialog by remember { mutableStateOf("") }
     var equalizerDialog by remember { mutableStateOf(false) }
@@ -475,13 +477,14 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
     }
 
     MaterialTheme(colorScheme = if (darkMode) darkColorScheme(primary = th.accent, secondary = th.second, background = th.bg, surface = th.panel) else lightColorScheme(primary = th.accent, secondary = th.second, background = th.bg, surface = th.panel, onSurface = primaryText, onBackground = primaryText)) {
-        val canHandleBack = expanded || equalizerDialog || showFoldersDialog || settingsSection.isNotBlank() || dialog.isNotBlank() || selected != null || search.isNotBlank() || tab != "home"
+        val canHandleBack = expanded || equalizerDialog || showFoldersDialog || settingsSection.isNotBlank() || dialog.isNotBlank() || selected != null || pendingDeletePlaylist != null || search.isNotBlank() || tab != "home"
         BackHandler(enabled = canHandleBack) {
             when {
                 equalizerDialog -> equalizerDialog = false
                 showFoldersDialog -> showFoldersDialog = false
                 settingsSection.isNotBlank() -> settingsSection = ""
                 dialog.isNotBlank() -> dialog = ""
+                pendingDeletePlaylist != null -> pendingDeletePlaylist = null
                 selected != null -> selected = null
                 expanded -> expanded = false
                 search.isNotBlank() -> search = ""
