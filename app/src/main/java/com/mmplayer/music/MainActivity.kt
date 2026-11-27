@@ -154,7 +154,7 @@ class MainActivity : ComponentActivity() {
     private val deleteLauncher = registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
         val approved = result.resultCode == Activity.RESULT_OK
         if (legacyDeleteItems.isNotEmpty()) {
-            if (approved) { legacyDeleteIndex++; deleteLegacyNext() } else finishLegacyDelete(false)
+            if (approved) deleteLegacyNext() else finishLegacyDelete(false)
         } else {
             if (approved) scan()
             deleteResultCallback?.invoke(approved)
