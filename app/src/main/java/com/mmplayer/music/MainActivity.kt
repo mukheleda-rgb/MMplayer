@@ -434,6 +434,10 @@ private fun TrackRows(rows: List<Track>, current: Track?, th: AppTheme, play: (T
             var delta by remember(t.id) { mutableFloatStateOf(0f) }
             var dragIndex by remember(t.id) { mutableIntStateOf(i) }
             val isDragging = draggingId == t.id
+            // Keep the drag callback fresh after every reorder/recomposition.
+            // Otherwise pointerInput can retain a callback that still uses the
+            // original row order, making the dragged item snap back.
+            val currentMove by rememberUpdatedState(move)
             Row(
                 Modifier.fillMaxWidth()
                     .animateItemPlacement()
@@ -477,12 +481,12 @@ private fun TrackRows(rows: List<Track>, current: Track?, th: AppTheme, play: (T
                             ) { change, dragAmount ->
                                 delta += dragAmount.y
                                 while (delta >= 20f && dragIndex < rows.lastIndex) {
-                                    move(dragIndex, dragIndex + 1)
+                                    currentMove(dragIndex, dragIndex + 1)
                                     dragIndex++
                                     delta -= 20f
                                 }
                                 while (delta <= -20f && dragIndex > 0) {
-                                    move(dragIndex, dragIndex - 1)
+                                    currentMove(dragIndex, dragIndex - 1)
                                     dragIndex--
                                     delta += 20f
                                 }
