@@ -683,9 +683,9 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                     }
                                 }
                             Text(tr("الأكثر تشغيلًا", "Most played"), color = primaryText, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 14.dp))
-                            HomeTrackStrip(popular, current, th, { play(it, visibleTracks.filter { q -> q.quran == it.quran }) })
+                            HomeTrackStrip(popular, current, th, { play(it, visibleTracks.filter { q -> q.quran == it.quran }) }, { selected = it })
                             Text(tr("المضاف حديثاً", "Recently added"), color = primaryText, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp))
-                            HomeTrackStrip(recent, current, th, { play(it, visibleTracks.filter { q -> q.quran == it.quran }) })
+                            HomeTrackStrip(recent, current, th, { play(it, visibleTracks.filter { q -> q.quran == it.quran }) }, { selected = it })
                             }
                         }
                         "most" -> TrackRows(visibleTracks.sortedByDescending { playCounts[it.id] ?: 0 }.filter { (playCounts[it.id] ?: 0) > 0 }.take(10), current, th, { play(it, visibleTracks.filter { q -> q.quran == it.quran }) }, { selected = it }, { _, _ -> })
@@ -1230,10 +1230,11 @@ private fun HomeDashboardTile(title: String, count: String, icon: androidx.compo
 }
 
 @Composable
-private fun HomeTrackStrip(rows: List<Track>, current: Track?, th: AppTheme, play: (Track) -> Unit) {
+@OptIn(ExperimentalFoundationApi::class)
+private fun HomeTrackStrip(rows: List<Track>, current: Track?, th: AppTheme, play: (Track) -> Unit, menu: (Track) -> Unit) {
     LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(vertical = 6.dp)) {
         items(rows, key = { it.id }) { t ->
-            Column(Modifier.width(112.dp).clip(RoundedCornerShape(13.dp)).background(if (current?.id == t.id) th.accent.copy(alpha = 0.22f) else th.panel).clickable { play(t) }.padding(8.dp)) {
+            Column(Modifier.width(112.dp).clip(RoundedCornerShape(13.dp)).background(if (current?.id == t.id) th.accent.copy(alpha = 0.22f) else th.panel).combinedClickable(onClick = { play(t) }, onLongClick = { menu(t) }).padding(8.dp)) {
                 Art(t, Modifier.size(92.dp).align(Alignment.CenterHorizontally), th)
                 Text(t.title, color = th.primaryText, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(t.artist, color = th.secondaryText, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
