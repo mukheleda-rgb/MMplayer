@@ -802,9 +802,9 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                                     blurRadius = 22f
                                                 )
                                             ),
-                                            fontSize = 30.sp,
-                                            fontWeight = FontWeight.ExtraBold,
-                                            letterSpacing = 0.1.sp
+                                            fontSize = 38.sp,
+                                            fontWeight = FontWeight.Black,
+                                            letterSpacing = 0.25.sp
                                         )
                                         Row(
                                             verticalAlignment = Alignment.CenterVertically,
