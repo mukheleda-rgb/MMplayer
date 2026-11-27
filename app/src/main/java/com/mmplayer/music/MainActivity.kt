@@ -311,7 +311,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                 Box(Modifier.fillMaxSize()) {
                     val bg = tabBackgrounds[tab].orEmpty()
                     if (bg.isNotBlank()) AsyncImage(model = Uri.parse(bg), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().blur((tabBlur[tab] ?: 0f).dp))
-                    Box(Modifier.fillMaxSize().background(Color.Black.copy(alpha = tabDim[tab] ?: 0.42f)))
+                    Box(Modifier.fillMaxSize().background(if (bg.isBlank()) th.bg else Color.Black.copy(alpha = tabDim[tab] ?: 0.42f)))
                     Column(Modifier.fillMaxSize().animateContentSize(tween(260)).padding(pad).padding(horizontal = 16.dp)) {
                     if (tab != "home") {
                         Row(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
