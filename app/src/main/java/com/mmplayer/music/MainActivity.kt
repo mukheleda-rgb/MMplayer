@@ -723,8 +723,12 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                             listOf("manual" to tr("يدوي", "Manual"), "name" to tr("الاسم", "Name"), "date" to tr("التاريخ", "Date"), "size" to tr("الحجم", "Size")).forEach { (v, label) -> DropdownMenuItem(text = { Text(label) }, onClick = { sort = v; sortMenu = false }) }
                                         }
                                     }
-                                    IconButton(onClick = { selectionMode = !selectionMode; if (!selectionMode) selectedTrackIds = emptySet() }, modifier = Modifier.size(40.dp)) {
-                                        Icon(if (selectionMode) Icons.Rounded.Close else Icons.Rounded.Checklist, tr("تحديد الملفات", "Select tracks"), tint = th.accent)
+                                    if (selectionMode) {
+                                        TextButton(onClick = { selectedTrackIds = if (selectedTrackIds.size == pageShown.size) emptySet() else pageShown.map { it.id }.toSet() }, contentPadding = PaddingValues(horizontal = 5.dp)) {
+                                            Text(if (selectedTrackIds.size == pageShown.size) tr("إلغاء الكل", "Clear all") else tr("تحديد الكل", "Select all"), color = th.accent, fontSize = 11.sp, maxLines = 1)
+                                        }
+                                    } else {
+                                        Spacer(Modifier.width(4.dp))
                                     }
                                 }
                                 Text(pageShown.size.toString() + " " + tr("ملف", "files"), color = secondaryText, fontSize = 11.sp, modifier = Modifier.padding(bottom = 3.dp))
@@ -734,7 +738,6 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                 if (selectionMode) {
                                     Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
                                         Text(selectedTrackIds.size.toString() + " " + tr("محدد", "selected"), color = secondaryText, modifier = Modifier.weight(1f))
-                                        TextButton(onClick = { selectedTrackIds = if (selectedTrackIds.size == pageShown.size) emptySet() else pageShown.map { it.id }.toSet() }) { Text(if (selectedTrackIds.size == pageShown.size) tr("إلغاء الكل", "Clear all") else tr("تحديد الكل", "Select all"), color = th.accent, fontSize = 11.sp) }
                                         TextButton(enabled = selectedTrackIds.isNotEmpty(), onClick = { newName = ""; dialog = "new_from_selection" }) { Text(tr("إنشاء قائمة", "Create list"), fontSize = 11.sp) }
                                         TextButton(enabled = selectedTrackIds.isNotEmpty(), onClick = { deleteTargets = pageShown.filter { it.id in selectedTrackIds }; dialog = "delete_tracks" }) { Text(tr("حذف من الجهاز", "Delete from device"), color = Color(0xFFFF7777)) }
                                         TextButton(onClick = { selectionMode = false; selectedTrackIds = emptySet() }) { Text(tr("إلغاء", "Cancel")) }
