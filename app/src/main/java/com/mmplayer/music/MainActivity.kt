@@ -144,6 +144,8 @@ class MainActivity : ComponentActivity() {
     private var equalizerLevels by mutableStateOf(listOf<Int>())
     private var equalizerEnabled by mutableStateOf(false)
     private var equalizerRange by mutableStateOf(-1500..1500)
+    private var fadeDurationMs by mutableLongStateOf(0L)
+    private var fadeGeneration = 0
     private var libraryMessage by mutableStateOf("")
     private val libraryExecutor = Executors.newSingleThreadExecutor()
     private val scanGeneration = AtomicInteger(0)
@@ -182,6 +184,7 @@ class MainActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         pendingExternalUri = externalAudioUri(intent)
+        fadeDurationMs = getSharedPreferences("mmplayer", MODE_PRIVATE).getLong("fade_duration_ms", 0L).coerceIn(0L, 8000L)
         tracks = loadCachedTracks()
         if (tracks.isNotEmpty()) libraryMessage = "تم تحميل " + tracks.size + " ملف من الذاكرة المحفوظة"
         artworkLoader = ImageLoader.Builder(applicationContext)
@@ -615,7 +618,6 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
         } catch (_: Exception) { Toast.makeText(ctx, "تعذر حفظ الصورة", Toast.LENGTH_SHORT).show() }
     }
     val folderCounts = remember(tracks) { tracks.groupingBy { it.path.substringBeforeLast('/', "").ifBlank { "Unknown folder" } }.eachCount().toSortedMap() }
-    val activeFolderCounts = remember(pageBase) { pageBase.groupingBy { it.path.substringBeforeLast("/", "").ifBlank { "Unknown folder" } }.eachCount().toSortedMap() }
     val visibleTracks = remember(tracks, categoryOverrides, hiddenFolders, metadataEdits) { tracks.map { original ->
         val t = categoryOverrides[original.id]?.let { original.copy(quran = it) } ?: original
         val edit = metadataEdits[t.id]
@@ -712,6 +714,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                         "playlist" -> lists[activeList].orEmpty().mapNotNull { id -> visibleTracks.firstOrNull { it.id == id } }
                         else -> visibleTracks.filter { !it.quran }
                     } }
+                    val activeFolderCounts = remember(pageBase) { pageBase.groupingBy { it.path.substringBeforeLast("/", "").ifBlank { "Unknown folder" } }.eachCount().toSortedMap() }
                     val pageFiltered = remember(pageBase, search, favoritesOnly, favoriteIds, quranReciter, activeTab, selectedFolder) { pageBase.filter { (it.title.contains(search, true) || it.artist.contains(search, true)) && (!favoritesOnly || it.id in favoriteIds) && (activeTab != "quran" || quranReciter.isBlank() || it.artist == quranReciter) && (selectedFolder.isBlank() || it.path.substringBeforeLast("/", "").ifBlank { "Unknown folder" } == selectedFolder) } }
                     val pageShown = remember(pageFiltered, sort, manual, playCounts) { when (sort) {
                         "name" -> pageFiltered.sortedBy { it.title.lowercase() }
