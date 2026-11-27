@@ -40,6 +40,7 @@ import androidx.compose.material3.*
 import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
@@ -215,6 +216,8 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
     var dialog by remember { mutableStateOf("") }
     var equalizerDialog by remember { mutableStateOf(false) }
     var manual by remember { mutableStateOf(runCatching { val a = JSONArray(prefs.getString("manual_order", "[]") ?: "[]"); (0 until a.length()).map { a.getLong(it) } }.getOrDefault(emptyList())) }
+    var playCounts by remember { mutableStateOf(runCatching { val j = JSONObject(prefs.getString("play_counts", "{}") ?: "{}"); buildMap<Long, Int> { j.keys().forEach { put(it.toLong(), j.getInt(it)) } } }.getOrDefault(emptyMap())) }
+    LaunchedEffect(current?.id) { current?.let { t -> playCounts = playCounts + (t.id to ((playCounts[t.id] ?: 0) + 1)); val j = JSONObject(); playCounts.forEach { (id, n) -> j.put(id.toString(), n) }; prefs.edit().putString("play_counts", j.toString()).putLong("last_track_id", t.id).apply() } }
     var hiddenFolders by remember { mutableStateOf(runCatching { val a = JSONArray(prefs.getString("hidden_folders", "[]") ?: "[]"); (0 until a.length()).map { a.getString(it) }.toSet() }.getOrDefault(emptySet())) }
     var showFoldersDialog by remember { mutableStateOf(false) }
     val folderCounts = tracks.groupingBy { it.path.substringBeforeLast('/', "").ifBlank { "Unknown folder" } }.eachCount().toSortedMap()
@@ -315,13 +318,45 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                             if (lists.isEmpty()) Text(tr("أنشئ قائمة أو استورد ملف M3U", "Create a playlist or import an M3U file"), color = Color.LightGray)
                         }
                         "home" -> {
-                            Row(horizontalArrangement = Arrangement.spacedBy(10.dp)) {
-                                Tile(tr("الموسيقى", "Music"), tracks.count { !it.quran }.toString(), Icons.Rounded.MusicNote, Modifier.weight(1f), th) { tab = "music" }
-                                Tile(tr("القرآن", "Quran"), tracks.count { it.quran }.toString(), Icons.Rounded.MenuBook, Modifier.weight(1f), th) { tab = "quran" }
+                            val recent = visibleTracks.sortedByDescending { it.added }.take(10)
+                            val popular = visibleTracks.sortedByDescending { playCounts[it.id] ?: 0 }.filter { (playCounts[it.id] ?: 0) > 0 }.take(10)
+                            val last = visibleTracks.firstOrNull { it.id == prefs.getLong("last_track_id", -1L) }
+                            Column(Modifier.fillMaxWidth()) {
+                                Box(Modifier.fillMaxWidth().height(170.dp), contentAlignment = Alignment.Center) {
+                                    Text("MMplayer", color = Color.White, fontSize = 48.sp, fontWeight = FontWeight.ExtraBold)
+                                    Text(tr("مساحتك الصوتية", "YOUR AUDIO SPACE"), color = th.accent, fontSize = 11.sp, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp), letterSpacing = 3.sp)
+                                }
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    HomeDashboardTile(tr("الموسيقى", "Music"), visibleTracks.count { !it.quran }.toString(), Icons.Rounded.MusicNote, visibleTracks.filter { !it.quran }.take(3), Modifier.weight(1f), th) { tab = "music" }
+                                    HomeDashboardTile(tr("القرآن", "Quran"), visibleTracks.count { it.quran }.toString(), Icons.Rounded.MenuBook, visibleTracks.filter { it.quran }.take(3), Modifier.weight(1f), th) { tab = "quran" }
+                                }
+                                Spacer(Modifier.height(10.dp))
+                                Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
+                                    HomeDashboardTile(tr("الأكثر تشغيلًا", "Most played"), popular.size.toString(), Icons.Rounded.TrendingUp, popular.take(3), Modifier.weight(1f), th) { tab = "most" }
+                                    HomeDashboardTile(tr("أُضيفت حديثاً", "Recently added"), recent.size.toString(), Icons.Rounded.LibraryAdd, recent.take(3), Modifier.weight(1f), th) { tab = "recent" }
+                                }
+                                Spacer(Modifier.height(10.dp))
+                                Card(Modifier.fillMaxWidth(), colors = CardDefaults.cardColors(containerColor = th.panel), shape = RoundedCornerShape(18.dp)) {
+                                    Row(Modifier.padding(12.dp), verticalAlignment = Alignment.CenterVertically) {
+                                        if (last != null) Art(last, Modifier.size(54.dp), th) else Icon(Icons.Rounded.History, null, tint = th.accent, modifier = Modifier.size(48.dp))
+                                        Column(Modifier.weight(1f).padding(horizontal = 8.dp)) {
+                                            Text(tr("آخر ملف تم تشغيله", "Last played"), color = th.accent, fontSize = 11.sp)
+                                            Text(last?.title ?: tr("لم يتم تشغيل ملف بعد", "Nothing played yet"), color = Color.White, maxLines = 1)
+                                            Text(time(if (last?.id == current?.id) currentPositionMs else prefs.getLong("last_position_ms", 0L)), color = Color.LightGray, fontSize = 11.sp)
+                                        }
+                                        IconButton(onClick = previous) { Icon(Icons.Rounded.SkipPrevious, null, tint = th.accent) }
+                                        IconButton(onClick = toggle) { Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null, tint = th.accent) }
+                                        IconButton(onClick = next) { Icon(Icons.Rounded.SkipNext, null, tint = th.accent) }
+                                    }
+                                }
                             }
-                            Text(tr("أُضيفت مؤخراً", "Recently added"), color = Color.White, fontSize = 18.sp, modifier = Modifier.padding(vertical = 12.dp))
-                            TrackRows(visibleTracks.sortedByDescending { it.added }.take(12), current, th, { play(it, visibleTracks.filter { q -> q.quran == it.quran }) }, { selected = it }, { _, _ -> })
+                            Text(tr("الأكثر تشغيلًا", "Most played"), color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 14.dp))
+                            TrackRows(popular, current, th, { play(it, visibleTracks.filter { q -> q.quran == it.quran }) }, { selected = it }, { _, _ -> })
+                            Text(tr("المضاف حديثاً", "Recently added"), color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp))
+                            TrackRows(recent, current, th, { play(it, visibleTracks.filter { q -> q.quran == it.quran }) }, { selected = it }, { _, _ -> })
                         }
+                        "most" -> TrackRows(visibleTracks.sortedByDescending { playCounts[it.id] ?: 0 }.filter { (playCounts[it.id] ?: 0) > 0 }.take(10), current, th, { play(it, visibleTracks.filter { q -> q.quran == it.quran }) }, { selected = it }, { _, _ -> })
+                        "recent" -> TrackRows(visibleTracks.sortedByDescending { it.added }.take(10), current, th, { play(it, visibleTracks.filter { q -> q.quran == it.quran }) }, { selected = it }, { _, _ -> })
                         else -> {
                             if (tab == "playlist") Row(verticalAlignment = Alignment.CenterVertically) { Text(activeList, color = Color.White, modifier = Modifier.weight(1f)); IconButton(onClick = { exportFile.launch(activeList + ".m3u") }) { Icon(Icons.Rounded.FileDownload, null, tint = th.accent) } }
                             OutlinedTextField(search, { search = it }, Modifier.fillMaxWidth(), placeholder = { Text(tr("ابحث عن ملف صوتي", "Search audio")) }, leadingIcon = { Icon(Icons.Rounded.Search, null) }, singleLine = true)
@@ -471,6 +506,27 @@ private fun Art(t: Track, m: Modifier, th: AppTheme) {
         if (t.cover != null) AsyncImage(t.cover, t.title, Modifier.fillMaxSize()) else Icon(if (t.quran) Icons.Rounded.MenuBook else Icons.Rounded.MusicNote, null, tint = th.accent, modifier = Modifier.size(30.dp))
     }
 }
+@Composable
+private fun HomeDashboardTile(title: String, count: String, icon: androidx.compose.ui.graphics.vector.ImageVector, covers: List<Track>, modifier: Modifier, th: AppTheme, click: () -> Unit) {
+    Card(modifier.height(112.dp).clickable { click() }, colors = CardDefaults.cardColors(containerColor = th.panel), shape = RoundedCornerShape(18.dp)) {
+        Box(Modifier.fillMaxSize().padding(12.dp)) {
+            Row(Modifier.align(Alignment.TopEnd), horizontalArrangement = Arrangement.spacedBy((-18).dp)) {
+                covers.take(3).forEachIndexed { index, track ->
+                    Box(Modifier.size(43.dp).rotate(30f + index * 2).clip(RoundedCornerShape(8.dp)).background(th.bg)) {
+                        if (track.cover != null) AsyncImage(track.cover, track.title, Modifier.fillMaxSize())
+                        else Icon(icon, null, tint = th.accent, modifier = Modifier.align(Alignment.Center))
+                    }
+                }
+            }
+            Column(Modifier.align(Alignment.BottomStart)) {
+                Icon(icon, null, tint = th.accent, modifier = Modifier.size(19.dp))
+                Text(count, color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold)
+                Text(title, color = Color.LightGray, fontSize = 11.sp, maxLines = 1)
+            }
+        }
+    }
+}
+
 @Composable
 private fun Tile(title: String, count: String, icon: androidx.compose.ui.graphics.vector.ImageVector, m: Modifier, th: AppTheme, click: () -> Unit) {
     Card(m.clickable { click() }, colors = CardDefaults.cardColors(containerColor = th.panel), shape = RoundedCornerShape(18.dp)) { Column(Modifier.padding(15.dp)) { Icon(icon, null, tint = th.accent); Text(count, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold); Text(title, color = Color.LightGray) } }
