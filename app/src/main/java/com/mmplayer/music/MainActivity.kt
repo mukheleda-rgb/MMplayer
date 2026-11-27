@@ -96,7 +96,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         player = ExoPlayer.Builder(this).build()
         setContent {
-            MMApp(tracks, current, playing, activeQueue, { track, queue -> play(track, queue) }, { toggle() }, { step(1) }, { step(-1) }, { refreshLibrary() }, libraryMessage, repeatMode, { cycleRepeat() }, shuffleEnabled, { toggleShuffle() })
+            MMApp(tracks, current, playing, activeQueue, { track, queue -> play(track, queue) }, { toggle() }, { step(1) }, { step(-1) }, { refreshLibrary() }, libraryMessage, repeatMode, { cycleRepeat() }, shuffleEnabled, { toggleShuffle() }, equalizerEnabled, equalizerLevels, equalizerRange, { setEqualizerEnabled(it) }, { band, level -> setEqualizerBand(band, level) })
         }
         refreshLibrary()
     }
@@ -191,7 +191,7 @@ private fun getLists(c: Context): Map<String, List<Long>> = try {
 private fun putLists(c: Context, m: Map<String, List<Long>>) { val j = JSONObject(); m.forEach { (k, v) -> j.put(k, JSONArray(v)) }; c.getSharedPreferences("mmplayer", 0).edit().putString("lists", j.toString()).apply() }
 
 @Composable
-private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, playerQueue: List<Track>, play: (Track, List<Track>) -> Unit, toggle: () -> Unit, next: () -> Unit, previous: () -> Unit, refresh: () -> Unit, libraryMessage: String, repeatMode: Int, cycleRepeat: () -> Unit, shuffleEnabled: Boolean, toggleShuffle: () -> Unit) {
+private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, playerQueue: List<Track>, play: (Track, List<Track>) -> Unit, toggle: () -> Unit, next: () -> Unit, previous: () -> Unit, refresh: () -> Unit, libraryMessage: String, repeatMode: Int, cycleRepeat: () -> Unit, shuffleEnabled: Boolean, toggleShuffle: () -> Unit, equalizerEnabled: Boolean, equalizerLevels: List<Int>, equalizerRange: IntRange, setEqualizerEnabled: (Boolean) -> Unit, setEqualizerBand: (Int, Int) -> Unit) {
     val ctx = LocalContext.current
     val prefs = remember { ctx.getSharedPreferences("mmplayer", 0) }
     var lang by remember { mutableStateOf(prefs.getString("lang", "ar") ?: "ar") }
@@ -205,6 +205,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
     var selected by remember { mutableStateOf<Track?>(null) }
     var newName by remember { mutableStateOf("") }
     var dialog by remember { mutableStateOf("") }
+    var equalizerDialog by remember { mutableStateOf(false) }
     var manual by remember { mutableStateOf(runCatching { val a = JSONArray(prefs.getString("manual_order", "[]") ?: "[]"); (0 until a.length()).map { a.getLong(it) } }.getOrDefault(emptyList())) }
     val th = appThemes[themeNo]
     val ar = lang == "ar"
@@ -254,7 +255,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
     }
     MaterialTheme(colorScheme = darkColorScheme(primary = th.accent, secondary = th.second, background = th.bg, surface = th.panel)) {
         if (expanded && current != null) {
-            FullPlayer(current, playerQueue, playing, th, ar, { expanded = false }, toggle, next, previous, { play(it, playerQueue) }, repeatMode, cycleRepeat, shuffleEnabled, toggleShuffle)
+            FullPlayer(current, playerQueue, playing, th, ar, { expanded = false }, toggle, next, previous, { play(it, playerQueue) }, repeatMode, cycleRepeat, shuffleEnabled, toggleShuffle, { equalizerDialog = true })
         } else {
             Scaffold(containerColor = th.bg, bottomBar = {
                 Column {
@@ -335,7 +336,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
 }
 
 @Composable
-private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: AppTheme, ar: Boolean, close: () -> Unit, toggle: () -> Unit, next: () -> Unit, previous: () -> Unit, play: (Track) -> Unit, repeatMode: Int, cycleRepeat: () -> Unit, shuffleEnabled: Boolean, toggleShuffle: () -> Unit) {
+private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: AppTheme, ar: Boolean, close: () -> Unit, toggle: () -> Unit, next: () -> Unit, previous: () -> Unit, play: (Track) -> Unit, repeatMode: Int, cycleRepeat: () -> Unit, shuffleEnabled: Boolean, toggleShuffle: () -> Unit, openEqualizer: () -> Unit) {
     var dx by remember { mutableFloatStateOf(0f) }; var dy by remember { mutableFloatStateOf(0f) }
     Column(Modifier.fillMaxSize().background(th.bg).pointerInput(track.id) {
         detectDragGestures(onDragEnd = { if (dy > 85) close() else if (dx < -60) next() else if (dx > 60) previous(); dx = 0f; dy = 0f }) { change, d -> dx += d.x; dy += d.y; change.consume() }
