@@ -525,12 +525,32 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                                         .padding(12.dp),
                                                     horizontalAlignment = Alignment.CenterHorizontally
                                                 ) {
+                                                    val coverTracks = remember(lists, visibleTracks, name) {
+                                                        lists[name].orEmpty().mapNotNull { id -> visibleTracks.firstOrNull { it.id == id } }.take(4)
+                                                    }
                                                     Box(
-                                                        Modifier.fillMaxWidth().aspectRatio(1.15f).clip(RoundedCornerShape(12.dp))
+                                                        Modifier.fillMaxWidth().aspectRatio(1f).clip(RoundedCornerShape(12.dp))
                                                             .background(Brush.linearGradient(listOf(th.accent.copy(alpha = .28f), th.panel))),
                                                         contentAlignment = Alignment.Center
                                                     ) {
-                                                        Icon(Icons.Rounded.QueueMusic, null, tint = th.accent, modifier = Modifier.size(42.dp))
+                                                        if (coverTracks.isEmpty()) {
+                                                            Icon(Icons.Rounded.QueueMusic, null, tint = th.accent, modifier = Modifier.size(42.dp))
+                                                        } else {
+                                                            Column(Modifier.fillMaxSize(), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                                                                Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                                                    Art(coverTracks[0], Modifier.weight(1f).fillMaxHeight(), th)
+                                                                    if (coverTracks.size > 1) Art(coverTracks[1], Modifier.weight(1f).fillMaxHeight(), th)
+                                                                    else Spacer(Modifier.weight(1f).fillMaxHeight())
+                                                                }
+                                                                if (coverTracks.size > 2) {
+                                                                    Row(Modifier.weight(1f).fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(2.dp)) {
+                                                                        Art(coverTracks[2], Modifier.weight(1f).fillMaxHeight(), th)
+                                                                        if (coverTracks.size > 3) Art(coverTracks[3], Modifier.weight(1f).fillMaxHeight(), th)
+                                                                        else Spacer(Modifier.weight(1f).fillMaxHeight())
+                                                                    }
+                                                                }
+                                                            }
+                                                        }
                                                     }
                                                     Text(name, color = primaryText, maxLines = 1, overflow = TextOverflow.Ellipsis,
                                                         modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
@@ -546,7 +566,8 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                         LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                             items(lists.keys.toList(), key = { it }) { name ->
                                                 Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(th.panel).clickable { activeList = name; tab = "playlist" }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                                    Icon(Icons.Rounded.QueueMusic, null, tint = th.accent)
+                                                    val cover = lists[name].orEmpty().firstNotNullOfOrNull { id -> visibleTracks.firstOrNull { it.id == id } }
+                                                    if (cover != null) Art(cover, Modifier.size(48.dp), th) else Icon(Icons.Rounded.QueueMusic, null, tint = th.accent)
                                                     Text(name, color = primaryText, modifier = Modifier.weight(1f).padding(horizontal = 10.dp))
                                                     Text(lists[name].orEmpty().size.toString(), color = secondaryText)
                                                     IconButton(onClick = { activeList = name; exportFile.launch(name + ".m3u") }) { Icon(Icons.Rounded.FileDownload, null, tint = th.accent) }
@@ -646,7 +667,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                             prefs.edit().putString("manual_order", JSONArray(ids).toString()).apply(); sort = "manual"
                                         }
                                     },
-                                    layout = libraryLayout, artShape = artworkShape, selectedIds = selectedTrackIds,
+                                    layout = libraryLayout, artShape = if (activeTab == "playlist") "square" else artworkShape, selectedIds = selectedTrackIds,
                                     onToggleSelect = if (selectionMode) ({ t -> selectedTrackIds = if (t.id in selectedTrackIds) selectedTrackIds - t.id else selectedTrackIds + t.id }) else null,
                                     modifier = Modifier.weight(1f).fillMaxWidth()
                                 )
