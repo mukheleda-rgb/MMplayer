@@ -423,6 +423,8 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
     var deleteTargets by remember { mutableStateOf<List<Track>>(emptyList()) }
     var pendingDeletePlaylist by remember { mutableStateOf<String?>(null) }
     var newName by remember { mutableStateOf("") }
+    var addTracksToList by remember { mutableStateOf(setOf<Long>()) }
+    var addTrackSearch by remember { mutableStateOf("") }
     var dialog by remember { mutableStateOf("") }
     var equalizerDialog by remember { mutableStateOf(false) }
     var manual by remember { mutableStateOf(runCatching { val a = JSONArray(prefs.getString("manual_order", "[]") ?: "[]"); (0 until a.length()).map { a.getLong(it) } }.getOrDefault(emptyList())) }
@@ -572,14 +574,30 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                         }
                         "lists" -> {
                             Column(Modifier.fillMaxSize()) {
-                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                    Text(tr("قوائم التشغيل المحفوظة", "Saved playlists"), color = primaryText, modifier = Modifier.weight(1f))
-                                    IconButton(onClick = { dialog = "new" }) { Icon(Icons.Rounded.Add, null, tint = th.accent) }
-                                    IconButton(onClick = { importFile.launch(arrayOf("text/*", "audio/x-mpegurl", "application/octet-stream")) }) { Icon(Icons.Rounded.FileOpen, null, tint = th.accent) }
-                                }
                                 if (lists.isEmpty()) {
-                                    Text(tr("أنشئ قائمة أو استورد ملف M3U", "Create a playlist or import an M3U file"), color = secondaryText, modifier = Modifier.padding(top = 12.dp))
+                                    Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                                        Column(horizontalAlignment = Alignment.CenterHorizontally, verticalArrangement = Arrangement.spacedBy(18.dp)) {
+                                            Icon(Icons.Rounded.QueueMusic, null, tint = th.accent, modifier = Modifier.size(76.dp))
+                                            Text(tr("لا توجد قوائم تشغيل بعد", "No playlists yet"), color = primaryText, fontSize = 20.sp, fontWeight = FontWeight.Bold)
+                                            Text(tr("أنشئ قائمتك الأولى أو استورد قائمة M3U", "Create your first playlist or import an M3U file"), color = secondaryText, fontSize = 13.sp)
+                                            Button(onClick = { dialog = "new" }, modifier = Modifier.fillMaxWidth(0.82f).height(54.dp), shape = RoundedCornerShape(16.dp), colors = ButtonDefaults.buttonColors(containerColor = th.accent)) {
+                                                Icon(Icons.Rounded.Add, null)
+                                                Spacer(Modifier.width(8.dp))
+                                                Text(tr("إنشاء قائمة تشغيل", "Create playlist"), fontSize = 16.sp)
+                                            }
+                                            OutlinedButton(onClick = { importFile.launch(arrayOf("text/*", "audio/x-mpegurl", "application/octet-stream")) }, modifier = Modifier.fillMaxWidth(0.82f).height(54.dp), shape = RoundedCornerShape(16.dp)) {
+                                                Icon(Icons.Rounded.FileOpen, null)
+                                                Spacer(Modifier.width(8.dp))
+                                                Text(tr("استيراد قائمة M3U", "Import M3U playlist"), fontSize = 16.sp)
+                                            }
+                                        }
+                                    }
                                 } else {
+                                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                        Text(tr("قوائم التشغيل المحفوظة", "Saved playlists"), color = primaryText, modifier = Modifier.weight(1f))
+                                        IconButton(onClick = { dialog = "new" }) { Icon(Icons.Rounded.Add, null, tint = th.accent) }
+                                        IconButton(onClick = { importFile.launch(arrayOf("text/*", "audio/x-mpegurl", "application/octet-stream")) }) { Icon(Icons.Rounded.FileOpen, null, tint = th.accent) }
+                                    }
                                     if (libraryLayout == "grid") {
                                         LazyVerticalGrid(
                                             columns = GridCells.Fixed(3),
@@ -727,6 +745,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                 if (activeTab == "playlist") {
                                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
                                         Text(activeList, color = primaryText, modifier = Modifier.weight(1f))
+                                        IconButton(onClick = { addTracksToList = emptySet(); addTrackSearch = ""; dialog = "add_tracks_to_list" }) { Icon(Icons.Rounded.Add, null, tint = th.accent) }
                                         IconButton(onClick = { exportFile.launch(activeList + ".m3u") }) { Icon(Icons.Rounded.FileDownload, null, tint = th.accent) }
                                     }
                                 }
@@ -1005,8 +1024,59 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
             confirmButton = { TextButton(onClick = { val targets = deleteTargets; deleteTracks(targets) { success -> if (success) { val removed = targets.map { it.id }.toSet(); lists = lists.mapValues { (_, ids) -> ids.filterNot { it in removed } }; putLists(ctx, lists); selectedTrackIds = selectedTrackIds - removed }; deleteTargets = emptyList(); dialog = "" } }) { Text(tr("حذف نهائياً", "Delete permanently"), color = Color(0xFFFF7777)) } },
             dismissButton = { TextButton(onClick = { dialog = ""; deleteTargets = emptyList() }) { Text(tr("إلغاء", "Cancel")) } })
     }
-    if (dialog == "new" || dialog == "new_from_selection") AlertDialog(containerColor = th.panel, titleContentColor = th.primaryText, textContentColor = th.secondaryText, iconContentColor = th.accent, onDismissRequest = { dialog = "" }, title = { Text(tr("قائمة جديدة", "New playlist"), color = primaryText) }, text = { OutlinedTextField(newName, { newName = it }, label = { Text(tr("اسم القائمة", "Playlist name")) }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = th.primaryText, unfocusedTextColor = th.primaryText, focusedBorderColor = th.accent, unfocusedBorderColor = th.secondaryText, focusedLabelColor = th.accent, unfocusedLabelColor = th.secondaryText, cursorColor = th.accent)) }, confirmButton = { TextButton(onClick = { if (newName.isNotBlank()) { val ids = if (dialog == "new_from_selection") selectedTrackIds.toList() else emptyList(); lists = lists + (newName.trim() to ids); putLists(ctx, lists); activeList = newName.trim(); selectedTrackIds = emptySet(); selectionMode = false }; newName = ""; dialog = "" }) { Text(tr("إنشاء", "Create")) } }, dismissButton = { TextButton(onClick = { dialog = ""; selectedTrackIds = emptySet(); selectionMode = false }) { Text(tr("إلغاء", "Cancel")) } })
+    if (dialog == "new" || dialog == "new_from_selection") AlertDialog(containerColor = th.panel, titleContentColor = th.primaryText, textContentColor = th.secondaryText, iconContentColor = th.accent, onDismissRequest = { dialog = "" }, title = { Text(tr("قائمة جديدة", "New playlist"), color = primaryText) }, text = { OutlinedTextField(newName, { newName = it }, label = { Text(tr("اسم القائمة", "Playlist name")) }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = th.primaryText, unfocusedTextColor = th.primaryText, focusedBorderColor = th.accent, unfocusedBorderColor = th.secondaryText, focusedLabelColor = th.accent, unfocusedLabelColor = th.secondaryText, cursorColor = th.accent)) }, confirmButton = { TextButton(onClick = { if (newName.isNotBlank()) { val ids = if (dialog == "new_from_selection") selectedTrackIds.toList() else emptyList(); lists = lists + (newName.trim() to ids); putLists(ctx, lists); activeList = newName.trim(); if (dialog == "new") { tab = "playlist"; addTracksToList = emptySet(); addTrackSearch = "" }; selectedTrackIds = emptySet(); selectionMode = false }; newName = ""; dialog = "" }) { Text(tr("إنشاء", "Create")) } }, dismissButton = { TextButton(onClick = { dialog = ""; selectedTrackIds = emptySet(); selectionMode = false }) { Text(tr("إلغاء", "Cancel")) } })
     if (dialog == "add") AlertDialog(containerColor = th.panel, titleContentColor = th.primaryText, textContentColor = th.secondaryText, iconContentColor = th.accent, onDismissRequest = { dialog = "" }, title = { Text(tr("إضافة إلى قائمة", "Add to playlist")) }, text = { Column { lists.keys.forEach { n -> TextButton(onClick = { val t = selected; if (t != null) { lists = lists + (n to (lists[n].orEmpty() + t.id).distinct()); putLists(ctx, lists) }; selected = null; dialog = "" }) { Text(n) } } } }, confirmButton = { TextButton(onClick = { dialog = ""; selected = null }) { Text(tr("إغلاق", "Close")) } })
+    if (dialog == "add_tracks_to_list") {
+        val musicChoices = visibleTracks.filter { !it.quran && (it.title.contains(addTrackSearch, true) || it.artist.contains(addTrackSearch, true)) }
+        val existingIds = lists[activeList].orEmpty().toSet()
+        AlertDialog(
+            containerColor = th.panel, titleContentColor = th.primaryText, textContentColor = th.secondaryText,
+            onDismissRequest = { dialog = ""; addTracksToList = emptySet(); addTrackSearch = "" },
+            title = { Text(tr("إضافة ملفات موسيقية", "Add music tracks")) },
+            text = {
+                Column(Modifier.fillMaxWidth().heightIn(max = 520.dp)) {
+                    OutlinedTextField(
+                        value = addTrackSearch, onValueChange = { addTrackSearch = it },
+                        modifier = Modifier.fillMaxWidth(),
+                        placeholder = { Text(tr("ابحث عن ملف أو فنان", "Search tracks or artists")) },
+                        leadingIcon = { Icon(Icons.Rounded.Search, null) }, singleLine = true,
+                        colors = OutlinedTextFieldDefaults.colors(focusedTextColor = th.primaryText, unfocusedTextColor = th.primaryText, focusedBorderColor = th.accent, unfocusedBorderColor = th.secondaryText, cursorColor = th.accent)
+                    )
+                    Text(addTracksToList.size.toString() + " " + tr("محدد", "selected"), color = th.accent, fontSize = 12.sp, modifier = Modifier.padding(vertical = 8.dp))
+                    if (musicChoices.isEmpty()) {
+                        Text(tr("لا توجد ملفات موسيقية مطابقة. حدّث المكتبة أو غيّر البحث.", "No matching music tracks. Refresh the library or change the search."), color = secondaryText, modifier = Modifier.padding(12.dp))
+                    } else {
+                        LazyColumn(Modifier.weight(1f), verticalArrangement = Arrangement.spacedBy(2.dp)) {
+                            items(musicChoices, key = { it.id }) { track ->
+                                val alreadyAdded = track.id in existingIds
+                                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (track.id in addTracksToList) th.accent.copy(alpha = .12f) else Color.Transparent).clickable(enabled = !alreadyAdded) {
+                                    addTracksToList = if (track.id in addTracksToList) addTracksToList - track.id else addTracksToList + track.id
+                                }.padding(horizontal = 6.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Art(track, Modifier.size(42.dp), th)
+                                    Column(Modifier.weight(1f).padding(horizontal = 8.dp)) {
+                                        Text(track.title, color = primaryText, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(track.artist, color = secondaryText, fontSize = 11.sp, maxLines = 1)
+                                    }
+                                    if (alreadyAdded) Text(tr("مضاف", "Added"), color = secondaryText, fontSize = 10.sp)
+                                    else Checkbox(checked = track.id in addTracksToList, onCheckedChange = { checked -> addTracksToList = if (checked) addTracksToList + track.id else addTracksToList - track.id }, colors = CheckboxDefaults.colors(checkedColor = th.accent))
+                                }
+                            }
+                        }
+                    }
+                }
+            },
+            confirmButton = {
+                TextButton(enabled = addTracksToList.isNotEmpty(), onClick = {
+                    lists = lists + (activeList to (lists[activeList].orEmpty() + addTracksToList).distinct())
+                    putLists(ctx, lists)
+                    Toast.makeText(ctx, tr("تمت إضافة الملفات إلى القائمة", "Tracks added to playlist"), Toast.LENGTH_SHORT).show()
+                    addTracksToList = emptySet(); addTrackSearch = ""; dialog = ""
+                }) { Text(tr("إضافة", "Add")) }
+            },
+            dismissButton = { TextButton(onClick = { addTracksToList = emptySet(); addTrackSearch = ""; dialog = "" }) { Text(tr("إلغاء", "Cancel")) } }
+        )
+    }
+
     selected?.let { t ->
         AlertDialog(
             containerColor = th.panel, titleContentColor = th.primaryText, textContentColor = th.secondaryText, iconContentColor = th.accent,
