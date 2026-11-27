@@ -33,6 +33,14 @@ import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.animateFloat
 import androidx.compose.animation.core.RepeatMode
 import androidx.compose.animation.togetherWith
+import androidx.compose.animation.AnimatedContentTransitionScope
+import androidx.compose.animation.ContentTransform
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.Spring
+import androidx.compose.animation.core.spring
+import kotlin.math.abs
+import kotlin.math.cos
+import kotlin.math.sin
 import androidx.compose.animation.animateContentSize
 import androidx.compose.animation.scaleIn
 import androidx.compose.animation.scaleOut
@@ -56,6 +64,7 @@ import androidx.compose.runtime.*
 import androidx.compose.ui.*
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.blur
+import androidx.compose.ui.draw.drawBehind
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.draw.rotate
 import androidx.compose.ui.draw.shadow
@@ -329,19 +338,6 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
         } catch (e: Exception) { Toast.makeText(ctx, e.message ?: "Export error", Toast.LENGTH_LONG).show() }
     }
 
-    val base = remember(tab, visibleTracks, lists, activeList) { when (tab) {
-        "quran" -> visibleTracks.filter { it.quran }
-        "music" -> visibleTracks.filter { !it.quran }
-        "playlist" -> lists[activeList].orEmpty().mapNotNull { id -> visibleTracks.firstOrNull { it.id == id } }
-        else -> visibleTracks.filter { !it.quran }
-    } }
-    val filtered = remember(base, search) { base.filter { it.title.contains(search, true) || it.artist.contains(search, true) } }
-    val shown = remember(filtered, sort, manual) { when (sort) {
-        "name" -> filtered.sortedBy { it.title.lowercase() }
-        "date" -> filtered.sortedByDescending { it.added }
-        "size" -> filtered.sortedByDescending { it.size }
-        else -> if (manual.isEmpty()) filtered else filtered.sortedBy { manual.indexOf(it.id).let { n -> if (n < 0) Int.MAX_VALUE else n } }
-    } }
     MaterialTheme(colorScheme = if (darkMode) darkColorScheme(primary = th.accent, secondary = th.second, background = th.bg, surface = th.panel) else lightColorScheme(primary = th.accent, secondary = th.second, background = th.bg, surface = th.panel, onSurface = primaryText, onBackground = primaryText)) {
         val canHandleBack = expanded || equalizerDialog || showFoldersDialog || settingsSection.isNotBlank() || dialog.isNotBlank() || selected != null || search.isNotBlank() || tab != "home"
         BackHandler(enabled = canHandleBack) {
@@ -372,7 +368,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                     }
                     NavigationBar(containerColor = th.panel) {
                         listOf(Triple("home", Icons.Rounded.Home, tr("الرئيسية", "Home")), Triple("music", Icons.Rounded.MusicNote, tr("الموسيقى", "Music")), Triple("quran", Icons.Rounded.MenuBook, tr("القرآن", "Quran")), Triple("lists", Icons.Rounded.QueueMusic, tr("قوائمي", "Playlists")), Triple("settings", Icons.Rounded.Settings, tr("الإعدادات", "Settings"))).forEach { item ->
-                            NavigationBarItem(selected = tab == item.first, onClick = { tab = item.first }, icon = { AnimatedContent(targetState = tab == item.first, transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(120)) }, label = "nav-icon") { active -> Icon(item.second, null, tint = if (active) th.accent else Color.LightGray) } }, label = { Text(item.third, fontSize = 9.sp) })
+                            NavigationBarItem(selected = tabKeys[pagerState.currentPage.coerceIn(tabKeys.indices)] == item.first, onClick = { tab = item.first }, icon = { AnimatedContent(targetState = tab == item.first, transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(120)) }, label = "nav-icon") { active -> Icon(item.second, null, tint = if (active) th.accent else Color.LightGray) } }, label = { Text(item.third, fontSize = 9.sp) })
                         }
                     }
                 }
@@ -380,13 +376,27 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                 HorizontalPager(
                     state = pagerState,
                     modifier = Modifier.fillMaxSize().padding(pad),
-                    userScrollEnabled = swipeTabsEnabled,
+                    userScrollEnabled = swipeTabsEnabled && !(libraryLayout == "free" && tabKeys[pagerState.currentPage.coerceIn(tabKeys.indices)] in listOf("music", "quran")),
                     beyondViewportPageCount = 1,
                     pageSpacing = 0.dp
                 ) { page ->
                     val pageKey = tabKeys[page]
                     val activeTab = when { pageKey == "lists" && tab == "playlist" -> "playlist"; pageKey == "home" && tab in listOf("most", "recent") -> tab; else -> pageKey }
                     val bg = tabBackgrounds[pageKey].orEmpty()
+                    // Each page owns its category data while neighbouring pager pages are composed.
+                    val pageBase = remember(activeTab, visibleTracks, lists, activeList) { when (activeTab) {
+                        "quran" -> visibleTracks.filter { it.quran }
+                        "music" -> visibleTracks.filter { !it.quran }
+                        "playlist" -> lists[activeList].orEmpty().mapNotNull { id -> visibleTracks.firstOrNull { it.id == id } }
+                        else -> visibleTracks.filter { !it.quran }
+                    } }
+                    val pageFiltered = remember(pageBase, search) { pageBase.filter { it.title.contains(search, true) || it.artist.contains(search, true) } }
+                    val pageShown = remember(pageFiltered, sort, manual) { when (sort) {
+                        "name" -> pageFiltered.sortedBy { it.title.lowercase() }
+                        "date" -> pageFiltered.sortedByDescending { it.added }
+                        "size" -> pageFiltered.sortedByDescending { it.size }
+                        else -> if (manual.isEmpty()) pageFiltered else pageFiltered.sortedBy { manual.indexOf(it.id).let { n -> if (n < 0) Int.MAX_VALUE else n } }
+                    } }
                     Box(Modifier.fillMaxSize().background(th.bg)) {
                         if (bg.isNotBlank()) AsyncImage(model = Uri.parse(bg), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().blur((tabBlur[pageKey] ?: 0f).dp))
                         Box(Modifier.fillMaxSize().background(if (bg.isBlank()) Color.Transparent else Color.Black.copy(alpha = tabDim[pageKey] ?: 0.68f)))
@@ -497,7 +507,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                 )
                                 var sortMenu by remember { mutableStateOf(false) }
                                 Row(Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Text(shown.size.toString() + " " + tr("ملف", "files"), color = secondaryText, modifier = Modifier.weight(1f))
+                                    Text(pageShown.size.toString() + " " + tr("ملف", "files"), color = secondaryText, modifier = Modifier.weight(1f))
                                     IconButton(onClick = { selectionMode = !selectionMode; if (!selectionMode) selectedTrackIds = emptySet() }) { Icon(if (selectionMode) Icons.Rounded.Close else Icons.Rounded.Checklist, tr("تحديد ملفات", "Select tracks"), tint = th.accent) }
                                     Box {
                                         TextButton(onClick = { sortMenu = true }) { Icon(Icons.Rounded.Sort, null); Text(tr("ترتيب", "Sort")) }
@@ -519,9 +529,9 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                     }
                                 }
                                 TrackLibraryView(
-                                    rows = shown, current = current, th = th, play = { play(it, base) }, menu = { selected = it },
+                                    rows = pageShown, current = current, th = th, play = { play(it, pageBase) }, menu = { selected = it },
                                     move = { a, b ->
-                                        val ids = shown.map { it.id }.toMutableList()
+                                        val ids = pageShown.map { it.id }.toMutableList()
                                         if (a in ids.indices && b in ids.indices) {
                                             val v = ids.removeAt(a); ids.add(b, v); manual = ids
                                             prefs.edit().putString("manual_order", JSONArray(ids).toString()).apply(); sort = "manual"
