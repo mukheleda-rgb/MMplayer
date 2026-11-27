@@ -874,8 +874,8 @@ private fun SettingsCategoryCard(title: String, subtitle: String, icon: androidx
         Row(Modifier.padding(15.dp), verticalAlignment = Alignment.CenterVertically) {
             Icon(icon, null, tint = th.accent, modifier = Modifier.size(28.dp))
             Column(Modifier.weight(1f).padding(horizontal = 13.dp)) {
-                Text(title, color = Color.White, fontWeight = FontWeight.SemiBold)
-                Text(subtitle, color = Color.LightGray, fontSize = 11.sp)
+                Text(title, color = th.primaryText, fontWeight = FontWeight.SemiBold)
+                Text(subtitle, color = th.secondaryText, fontSize = 11.sp)
             }
             Icon(Icons.Rounded.ChevronRight, null, tint = th.accent)
         }
@@ -896,8 +896,8 @@ private fun HomeDashboardTile(title: String, count: String, icon: androidx.compo
             }
             Column(Modifier.align(Alignment.BottomStart)) {
                 Icon(icon, null, tint = th.accent, modifier = Modifier.size(19.dp))
-                Text(count, color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold)
-                Text(title, color = Color.LightGray, fontSize = 11.sp, maxLines = 1)
+                Text(count, color = th.primaryText, fontSize = 23.sp, fontWeight = FontWeight.Bold)
+                Text(title, color = th.secondaryText, fontSize = 11.sp, maxLines = 1)
             }
         }
     }
@@ -909,8 +909,8 @@ private fun HomeTrackStrip(rows: List<Track>, current: Track?, th: AppTheme, pla
         items(rows, key = { it.id }) { t ->
             Column(Modifier.width(112.dp).clip(RoundedCornerShape(13.dp)).background(if (current?.id == t.id) th.accent.copy(alpha = 0.22f) else th.panel).clickable { play(t) }.padding(8.dp)) {
                 Art(t, Modifier.size(92.dp).align(Alignment.CenterHorizontally), th)
-                Text(t.title, color = Color.White, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(t.artist, color = Color.LightGray, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(t.title, color = th.primaryText, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(t.artist, color = th.secondaryText, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
@@ -918,7 +918,7 @@ private fun HomeTrackStrip(rows: List<Track>, current: Track?, th: AppTheme, pla
 
 @Composable
 private fun Tile(title: String, count: String, icon: androidx.compose.ui.graphics.vector.ImageVector, m: Modifier, th: AppTheme, click: () -> Unit) {
-    Card(m.clickable { click() }, colors = CardDefaults.cardColors(containerColor = th.panel), shape = RoundedCornerShape(18.dp)) { Column(Modifier.padding(15.dp)) { Icon(icon, null, tint = th.accent); Text(count, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold); Text(title, color = Color.LightGray) } }
+    Card(m.clickable { click() }, colors = CardDefaults.cardColors(containerColor = th.panel), shape = RoundedCornerShape(18.dp)) { Column(Modifier.padding(15.dp)) { Icon(icon, null, tint = th.accent); Text(count, color = th.primaryText, fontSize = 24.sp, fontWeight = FontWeight.Bold); Text(title, color = th.secondaryText) } }
 }
 @OptIn(ExperimentalFoundationApi::class)
 @Composable
@@ -988,7 +988,7 @@ private fun TrackRows(rows: List<Track>, current: Track?, th: AppTheme, play: (T
                     Art(t, Modifier.size(46.dp), th, circular)
                     Column(Modifier.weight(1f).padding(horizontal = 10.dp)) {
                         Text(t.title, color = if (current?.id == t.id) th.accent else Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                        Text(t.artist + " • " + time(t.duration), color = Color.LightGray, fontSize = 11.sp, maxLines = 1)
+                        Text(t.artist + " • " + time(t.duration), color = th.secondaryText, fontSize = 11.sp, maxLines = 1)
                     }
                 }
                 IconButton(onClick = { menu(t) }) { Icon(Icons.Rounded.MoreVert, null, tint = Color.LightGray) }
