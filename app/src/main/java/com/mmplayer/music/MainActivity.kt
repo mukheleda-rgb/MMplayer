@@ -15,14 +15,18 @@ import androidx.activity.compose.setContent
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.*
+import androidx.compose.foundation.ExperimentalFoundationApi
 import androidx.compose.animation.AnimatedContent
+import androidx.compose.animation.AnimatedVisibility
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
 import androidx.compose.animation.slideInHorizontally
 import androidx.compose.animation.slideOutHorizontally
+import androidx.compose.animation.slideInVertically
+import androidx.compose.animation.slideOutVertically
+import androidx.compose.animation.tween
 import androidx.compose.animation.togetherWith
 import androidx.compose.animation.animateContentSize
-import androidx.compose.animation.AnimatedContent
 import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -196,20 +200,22 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, play: 
         } else {
             Scaffold(containerColor = th.bg, bottomBar = {
                 Column {
+                    AnimatedVisibility(visible = current != null, enter = fadeIn(tween(220)) + slideInVertically(tween(260)) { it / 2 }, exit = fadeOut(tween(160)) + slideOutVertically(tween(180)) { it / 2 }) {
                     if (current != null) Row(Modifier.fillMaxWidth().animateContentSize().padding(8.dp).clip(RoundedCornerShape(15.dp)).background(th.panel).clickable { expanded = true }.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Art(current, Modifier.size(42.dp), th)
                         Column(Modifier.weight(1f).padding(horizontal = 9.dp)) { Text(current.title, color = Color.White, maxLines = 1); Text(current.artist, color = Color.LightGray, fontSize = 11.sp) }
                         IconButton(onClick = toggle) { Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null, tint = th.accent) }
                         IconButton(onClick = { expanded = true }) { Icon(Icons.Rounded.KeyboardArrowUp, null, tint = Color.White) }
                     }
+                    }
                     NavigationBar(containerColor = th.panel) {
                         listOf(Triple("home", Icons.Rounded.Home, tr("الرئيسية", "Home")), Triple("music", Icons.Rounded.MusicNote, tr("الموسيقى", "Music")), Triple("quran", Icons.Rounded.MenuBook, tr("القرآن", "Quran")), Triple("lists", Icons.Rounded.QueueMusic, tr("قوائمي", "Playlists")), Triple("settings", Icons.Rounded.Settings, tr("الإعدادات", "Settings"))).forEach { item ->
-                            NavigationBarItem(selected = tab == item.first, onClick = { tab = item.first }, icon = { Icon(item.second, null) }, label = { Text(item.third, fontSize = 9.sp) })
+                            NavigationBarItem(selected = tab == item.first, onClick = { tab = item.first }, icon = { AnimatedContent(targetState = tab == item.first, transitionSpec = { fadeIn(tween(180)) togetherWith fadeOut(tween(120)) }, label = "nav-icon") { active -> Icon(item.second, null, tint = if (active) th.accent else Color.LightGray) } }, label = { Text(item.third, fontSize = 9.sp) })
                         }
                     }
                 }
             }) { pad ->
-                Column(Modifier.fillMaxSize().padding(pad).padding(horizontal = 16.dp)) {
+                Column(Modifier.fillMaxSize().animateContentSize(tween(260)).padding(pad).padding(horizontal = 16.dp)) {
                     Row(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                         Column(Modifier.weight(1f)) { Text("MMplayer", color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.Bold); Text(when (tab) { "settings" -> tr("الإعدادات", "Settings"); "quran" -> tr("مكتبة القرآن", "Quran library"); "music" -> tr("مكتبة الموسيقى", "Music library"); "lists" -> tr("قوائم التشغيل", "Playlists"); else -> tr("مساحتك الصوتية", "Your audio space") }, color = th.accent) }
                         IconButton(onClick = refresh) { Icon(Icons.Rounded.Refresh, null, tint = Color.White) }
@@ -310,6 +316,7 @@ private fun Art(t: Track, m: Modifier, th: AppTheme) {
 private fun Tile(title: String, count: String, icon: androidx.compose.ui.graphics.vector.ImageVector, m: Modifier, th: AppTheme, click: () -> Unit) {
     Card(m.clickable { click() }, colors = CardDefaults.cardColors(containerColor = th.panel), shape = RoundedCornerShape(18.dp)) { Column(Modifier.padding(15.dp)) { Icon(icon, null, tint = th.accent); Text(count, color = Color.White, fontSize = 24.sp, fontWeight = FontWeight.Bold); Text(title, color = Color.LightGray) } }
 }
+@OptIn(ExperimentalFoundationApi::class)
 @Composable
 private fun TrackRows(rows: List<Track>, current: Track?, th: AppTheme, play: (Track) -> Unit, menu: (Track) -> Unit, move: (Int, Int) -> Unit) {
     var draggingId by remember { mutableStateOf<Long?>(null) }
