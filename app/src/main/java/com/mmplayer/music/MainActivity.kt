@@ -1094,49 +1094,13 @@ private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: A
         Box(Modifier.fillMaxWidth().padding(top = 14.dp), contentAlignment = Alignment.Center) { Box(Modifier.width(42.dp).height(5.dp).clip(CircleShape).background(Color.Gray)) }
         Row(Modifier.fillMaxWidth().padding(vertical = 15.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(onClick = close) { Icon(Icons.Rounded.KeyboardArrowDown, null, tint = Color.White) }; Text(if (ar) "قيد التشغيل" else "Now playing", color = th.primaryText, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center); Icon(Icons.Rounded.MoreHoriz, null, tint = Color.White) }
         Spacer(Modifier.weight(0.3f))
-        Box(
-            Modifier.fillMaxWidth().padding(horizontal = 18.dp).aspectRatio(1f)
-                .then(if (playerTheme == "3d") Modifier.shadow(22.dp, RoundedCornerShape(26.dp)) else Modifier)
-                .clip(if (playerTheme == "vinyl") CircleShape else RoundedCornerShape(if (playerTheme == "cassette") 18.dp else 24.dp))
-                .background(when (playerTheme) {
-                    "3d" -> Brush.linearGradient(listOf(Color(0xFF303642), Color(0xFF11141B)))
-                    "glass" -> Brush.linearGradient(listOf(Color(0x66FFFFFF), Color(0x221A2A3A)))
-                    "neon" -> Brush.linearGradient(listOf(Color(0xFF102A35), Color(0xFF160F2B)))
-                    "cinematic" -> Brush.linearGradient(listOf(Color(0xFF2C2520), Color(0xFF08090E)))
-                    "wave" -> Brush.linearGradient(listOf(Color(0xFF10383B), Color(0xFF0A1420)))
-                    "cassette" -> Brush.linearGradient(listOf(Color(0xFF49301F), Color(0xFF17120F)))
-                    "vinyl" -> Brush.linearGradient(listOf(Color(0xFF393044), Color(0xFF0B0B10)))
-                    else -> Brush.linearGradient(listOf(Color(0xFF292D35), Color(0xFF0B0D12)))
-                })
-                .border(if (playerTheme == "3d" || playerTheme == "glass") 1.dp else 0.dp, Color.White.copy(alpha = .14f), if (playerTheme == "vinyl") CircleShape else RoundedCornerShape(24.dp))
-        ) {
-            if (playerTheme == "cassette") {
-                CassetteDeck(track, th, playerAccent, reelAngle)
-            } else {
-                AnimatedContent(targetState = track, transitionSpec = trackTransition(playerEffect), label = "player-artwork") { animatedArt ->
-                    Art(animatedArt, Modifier.fillMaxSize().graphicsLayer { if (playerTheme == "vinyl") rotationZ = reelAngle }, th, circular = playerTheme == "vinyl")
-                }
-                if (playerTheme == "vinyl") {
-                    Canvas(Modifier.fillMaxSize()) {
-                        for (i in 1..6) drawCircle(Color.Black.copy(alpha = 0.18f), radius = size.minDimension / 2f * (0.30f + i * 0.11f), style = Stroke(1.dp.toPx()))
-                    }
-                    Box(Modifier.align(Alignment.Center).size(22.dp).clip(CircleShape).background(Color(0xFFB8A0FF)).border(4.dp, Color(0xFF17151D), CircleShape))
-                }
-                // Subtle reflected edge beneath the main artwork.
-                Art(track, Modifier.align(Alignment.BottomCenter).fillMaxWidth(0.70f).height(34.dp).graphicsLayer {
-                    scaleY = -1f
-                    alpha = 0.16f
-                }, th)
-                val carouselIndex = queue.indexOfFirst { it.id == track.id }.let { if (it < 0) 0 else it }
-                PlayerNeighborCard(
-                    queue.getOrNull(carouselIndex - 1), th, false, { previous() },
-                    Modifier.align(Alignment.CenterStart).padding(start = 3.dp)
-                )
-                PlayerNeighborCard(
-                    queue.getOrNull(carouselIndex + 1), th, false, { next() },
-                    Modifier.align(Alignment.CenterEnd).padding(end = 3.dp)
-                )
+        val carouselIndex = queue.indexOfFirst { it.id == track.id }.let { if (it < 0) 0 else it }
+        Row(Modifier.fillMaxWidth().padding(horizontal = 2.dp), verticalAlignment = Alignment.CenterVertically, horizontalArrangement = Arrangement.spacedBy(5.dp)) {
+            PlayerNeighborCard(queue.getOrNull(carouselIndex - 1), th, false, { previous() }, Modifier.width(58.dp).height(104.dp))
+            Box(Modifier.weight(1f).aspectRatio(1f).clip(RoundedCornerShape(24.dp)).background(Brush.linearGradient(listOf(th.panel, th.bg)))) {
+                AnimatedContent(targetState = track, transitionSpec = trackTransition(playerEffect), label = "player-artwork") { animatedArt -> Art(animatedArt, Modifier.fillMaxSize(), th) }
             }
+            PlayerNeighborCard(queue.getOrNull(carouselIndex + 1), th, false, { next() }, Modifier.width(58.dp).height(104.dp))
         }
         if (playerTheme == "wave" || playerTheme == "neon") WaveformBars(playing, playerAccent, Modifier.fillMaxWidth().height(40.dp).padding(top = 8.dp))
         Spacer(Modifier.height(24.dp))
