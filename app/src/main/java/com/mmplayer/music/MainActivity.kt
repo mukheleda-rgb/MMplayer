@@ -364,7 +364,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                     AnimatedVisibility(visible = current != null, enter = fadeIn(tween(220)) + slideInVertically(tween(260)) { it / 2 }, exit = fadeOut(tween(160)) + slideOutVertically(tween(180)) { it / 2 }) {
                     if (current != null) Row(Modifier.fillMaxWidth().animateContentSize().padding(8.dp).clip(RoundedCornerShape(15.dp)).background(th.panel).clickable { expanded = true }.padding(8.dp), verticalAlignment = Alignment.CenterVertically) {
                         Art(current, Modifier.size(42.dp), th)
-                        Column(Modifier.weight(1f).padding(horizontal = 9.dp)) { Text(current.title, color = Color.White, maxLines = 1); Text(current.artist, color = Color.LightGray, fontSize = 11.sp) }
+                        Column(Modifier.weight(1f).padding(horizontal = 9.dp)) { Text(current.title, color = primaryText, maxLines = 1); Text(current.artist, color = secondaryText, fontSize = 11.sp) }
                         IconButton(onClick = toggle) { Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null, tint = th.accent) }
                         IconButton(onClick = { expanded = true }) { Icon(Icons.Rounded.KeyboardArrowUp, null, tint = Color.White) }
                     }
@@ -393,7 +393,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                             if (activeTab != "home") {
                                 Row(Modifier.fillMaxWidth().padding(top = 16.dp, bottom = 10.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f)) {
-                                        Text("MMplayer", color = Color.White, fontSize = 27.sp, fontWeight = FontWeight.Bold)
+                                        Text("MMplayer", color = primaryText, fontSize = 27.sp, fontWeight = FontWeight.Bold)
                                         Text(when (activeTab) { "settings" -> tr("الإعدادات", "Settings"); "quran" -> tr("مكتبة القرآن", "Quran library"); "music" -> tr("مكتبة الموسيقى", "Music library"); "lists" -> tr("قوائم التشغيل", "Playlists"); "playlist" -> activeList; "most" -> tr("الأكثر تشغيلًا", "Most played"); "recent" -> tr("أُضيفت حديثاً", "Recently added"); else -> tr("مساحتك الصوتية", "Your audio space") }, color = th.accent)
                                     }
                                     IconButton(onClick = refresh) { Icon(Icons.Rounded.Refresh, null, tint = Color.White) }
@@ -403,7 +403,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                     when (activeTab) {
                         "settings" -> {
                             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
-                            Text(tr("الإعدادات", "Settings"), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp, modifier = Modifier.padding(bottom = 12.dp))
+                            Text(tr("الإعدادات", "Settings"), color = primaryText, fontWeight = FontWeight.Bold, fontSize = 20.sp, modifier = Modifier.padding(bottom = 12.dp))
                             SettingsCategoryCard(tr("المظهر واللغة", "Appearance & language"), tr("اختيار اللغة ولون التطبيق والثيم", "Choose language, app color and theme"), Icons.Rounded.Palette, th) { settingsSection = "appearance" }
                             SettingsCategoryCard(tr("عرض المكتبة", "Library display"), tr("قائمة أو شبكة أو شبكة حرة، وشكل الأغلفة", "List, grid or free-scrolling grid, and artwork shape"), Icons.Rounded.GridView, th) { settingsSection = "library" }
                             SettingsCategoryCard(tr("الخلفيات والمؤثرات", "Backgrounds & effects"), tr("صورة مستقلة لكل واجهة مع التحكم بالتعتيم والتمويه", "Separate image per tab with dim and blur controls"), Icons.Rounded.Wallpaper, th) { settingsSection = "backgrounds" }
@@ -417,19 +417,19 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                         "lists" -> {
                             Column(Modifier.fillMaxSize()) {
                                 Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                    Text(tr("قوائم التشغيل المحفوظة", "Saved playlists"), color = Color.White, modifier = Modifier.weight(1f))
+                                    Text(tr("قوائم التشغيل المحفوظة", "Saved playlists"), color = primaryText, modifier = Modifier.weight(1f))
                                     IconButton(onClick = { dialog = "new" }) { Icon(Icons.Rounded.Add, null, tint = th.accent) }
                                     IconButton(onClick = { importFile.launch(arrayOf("text/*", "audio/x-mpegurl", "application/octet-stream")) }) { Icon(Icons.Rounded.FileOpen, null, tint = th.accent) }
                                 }
                                 if (lists.isEmpty()) {
-                                    Text(tr("أنشئ قائمة أو استورد ملف M3U", "Create a playlist or import an M3U file"), color = Color.LightGray, modifier = Modifier.padding(top = 12.dp))
+                                    Text(tr("أنشئ قائمة أو استورد ملف M3U", "Create a playlist or import an M3U file"), color = secondaryText, modifier = Modifier.padding(top = 12.dp))
                                 } else {
                                     LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
                                         items(lists.keys.toList(), key = { it }) { name ->
                                             Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(th.panel).clickable { activeList = name; tab = "playlist" }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                                                 Icon(Icons.Rounded.QueueMusic, null, tint = th.accent)
-                                                Text(name, color = Color.White, modifier = Modifier.weight(1f).padding(horizontal = 10.dp))
-                                                Text(lists[name].orEmpty().size.toString(), color = Color.LightGray)
+                                                Text(name, color = primaryText, modifier = Modifier.weight(1f).padding(horizontal = 10.dp))
+                                                Text(lists[name].orEmpty().size.toString(), color = secondaryText)
                                                 IconButton(onClick = { activeList = name; exportFile.launch(name + ".m3u") }) { Icon(Icons.Rounded.FileDownload, null, tint = th.accent) }
                                                 IconButton(onClick = { lists = lists - name; putLists(ctx, lists) }) { Icon(Icons.Rounded.Delete, null, tint = Color(0xFFFF8888)) }
                                             }
@@ -444,7 +444,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                             val last = visibleTracks.firstOrNull { it.id == prefs.getLong("last_track_id", -1L) }
                             Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
                                 Box(Modifier.fillMaxWidth().height(170.dp), contentAlignment = Alignment.Center) {
-                                    Text("MMplayer", color = Color.White, fontSize = 48.sp, fontWeight = FontWeight.ExtraBold)
+                                    Text("MMplayer", color = primaryText, fontSize = 48.sp, fontWeight = FontWeight.ExtraBold)
                                     Text(tr("مساحتك الصوتية", "YOUR AUDIO SPACE"), color = th.accent, fontSize = 11.sp, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp), letterSpacing = 3.sp)
                                 }
                                 Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.spacedBy(10.dp)) {
@@ -462,17 +462,17 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                         if (last != null) Art(last, Modifier.size(54.dp), th) else Icon(Icons.Rounded.History, null, tint = th.accent, modifier = Modifier.size(48.dp))
                                         Column(Modifier.weight(1f).padding(horizontal = 8.dp)) {
                                             Text(tr("آخر ملف تم تشغيله", "Last played"), color = th.accent, fontSize = 11.sp)
-                                            Text(last?.title ?: tr("لم يتم تشغيل ملف بعد", "Nothing played yet"), color = Color.White, maxLines = 1)
-                                            Text(time(if (last?.id == current?.id) currentPositionMs else prefs.getLong("last_position_ms", 0L)), color = Color.LightGray, fontSize = 11.sp)
+                                            Text(last?.title ?: tr("لم يتم تشغيل ملف بعد", "Nothing played yet"), color = primaryText, maxLines = 1)
+                                            Text(time(if (last?.id == current?.id) currentPositionMs else prefs.getLong("last_position_ms", 0L)), color = secondaryText, fontSize = 11.sp)
                                         }
                                         IconButton(onClick = previous) { Icon(Icons.Rounded.SkipPrevious, null, tint = th.accent) }
                                         IconButton(onClick = { if (current == null && last != null) play(last, visibleTracks.filter { it.quran == last.quran }) else toggle() }) { Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null, tint = th.accent) }
                                         IconButton(onClick = next) { Icon(Icons.Rounded.SkipNext, null, tint = th.accent) }
                                     }
                                 }
-                            Text(tr("الأكثر تشغيلًا", "Most played"), color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 14.dp))
+                            Text(tr("الأكثر تشغيلًا", "Most played"), color = primaryText, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 14.dp))
                             HomeTrackStrip(popular, current, th, { play(it, visibleTracks.filter { q -> q.quran == it.quran }) })
-                            Text(tr("المضاف حديثاً", "Recently added"), color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp))
+                            Text(tr("المضاف حديثاً", "Recently added"), color = primaryText, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp))
                             HomeTrackStrip(recent, current, th, { play(it, visibleTracks.filter { q -> q.quran == it.quran }) })
                             }
                         }
@@ -482,7 +482,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                             Column(Modifier.fillMaxSize()) {
                                 if (activeTab == "playlist") {
                                     Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                        Text(activeList, color = Color.White, modifier = Modifier.weight(1f))
+                                        Text(activeList, color = primaryText, modifier = Modifier.weight(1f))
                                         IconButton(onClick = { exportFile.launch(activeList + ".m3u") }) { Icon(Icons.Rounded.FileDownload, null, tint = th.accent) }
                                     }
                                 }
@@ -575,7 +575,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                             appThemes.forEachIndexed { i, item ->
                                 Row(Modifier.fillMaxWidth().padding(vertical = 4.dp).clip(RoundedCornerShape(12.dp)).background(if (themeNo == i) th.accent.copy(alpha = 0.16f) else th.panel).clickable { themeNo = i; prefs.edit().putInt("theme", i).apply() }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Box(Modifier.size(26.dp).clip(CircleShape).background(item.accent))
-                                    Text(item.name, color = Color.White, modifier = Modifier.weight(1f).padding(horizontal = 10.dp))
+                                    Text(item.name, color = primaryText, modifier = Modifier.weight(1f).padding(horizontal = 10.dp))
                                     if (themeNo == i) Icon(Icons.Rounded.Check, null, tint = th.accent)
                                 }
                             }
@@ -604,23 +604,23 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                 val label = if (ar) mapOf("home" to "الرئيسية", "music" to "الموسيقى", "quran" to "القرآن", "lists" to "القوائم", "settings" to "الإعدادات")[key].orEmpty() else key.replaceFirstChar { it.uppercase() }
                                 Text(label, color = th.accent, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp))
                                 Row(verticalAlignment = Alignment.CenterVertically) {
-                                    Text(if (tabBackgrounds[key].orEmpty().isBlank()) tr("لم يتم اختيار صورة", "No image selected") else tr("تم اختيار صورة", "Image selected"), color = Color.White, modifier = Modifier.weight(1f), fontSize = 12.sp)
+                                    Text(if (tabBackgrounds[key].orEmpty().isBlank()) tr("لم يتم اختيار صورة", "No image selected") else tr("تم اختيار صورة", "Image selected"), color = primaryText, modifier = Modifier.weight(1f), fontSize = 12.sp)
                                     TextButton(onClick = { backgroundPickerTab = key; backgroundPicker.launch(arrayOf("image/*")) }) { Text(tr("اختيار", "Choose")) }
                                     if (tabBackgrounds[key].orEmpty().isNotBlank()) IconButton(onClick = { tabBackgrounds[key] = ""; prefs.edit().remove("bg_" + key).apply() }) { Icon(Icons.Rounded.Delete, null, tint = th.second) }
                                 }
-                                Text(tr("التعتيم", "Dim"), color = Color.White, fontSize = 11.sp)
+                                Text(tr("التعتيم", "Dim"), color = primaryText, fontSize = 11.sp)
                                 Slider(value = tabDim[key] ?: 0.68f, onValueChange = { tabDim[key] = it; prefs.edit().putFloat("dim_" + key, it).apply() }, valueRange = 0.55f..0.96f)
-                                Text(tr("التمويه", "Blur"), color = Color.White, fontSize = 11.sp)
+                                Text(tr("التمويه", "Blur"), color = primaryText, fontSize = 11.sp)
                                 Slider(value = tabBlur[key] ?: 0f, onValueChange = { tabBlur[key] = it; prefs.edit().putFloat("blur_" + key, it).apply() }, valueRange = 0f..24f)
                             }
                         }
                         "navigation" -> {
                             Text(tr("التنقل بالسحب الأفقي", "Swipe navigation"), color = th.accent, fontWeight = FontWeight.Bold)
                             Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(tr("تفعيل السحب يميناً ويساراً", "Enable left / right swiping"), color = Color.White, modifier = Modifier.weight(1f))
+                                Text(tr("تفعيل السحب يميناً ويساراً", "Enable left / right swiping"), color = primaryText, modifier = Modifier.weight(1f))
                                 Switch(checked = swipeTabsEnabled, onCheckedChange = { swipeTabsEnabled = it; prefs.edit().putBoolean("swipe_tabs", it).apply() })
                             }
-                            Text(tr("تتحرك الصفحات مع إصبعك أثناء السحب، ثم تستقر عند الإفلات.", "Pages follow your finger while dragging, then settle on release."), color = Color.LightGray, fontSize = 12.sp, modifier = Modifier.padding(top = 10.dp))
+                            Text(tr("تتحرك الصفحات مع إصبعك أثناء السحب، ثم تستقر عند الإفلات.", "Pages follow your finger while dragging, then settle on release."), color = secondaryText, fontSize = 12.sp, modifier = Modifier.padding(top = 10.dp))
                         }
                         "player" -> {
                             Text(tr("ثيم المشغل", "Player theme"), color = th.accent, fontWeight = FontWeight.Bold)
@@ -635,29 +635,29 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                 "vinyl" to tr("الأسطوانة الدوارة", "Vinyl Record")
                             ).forEach { (value, label) ->
                                 Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (playerTheme == value) th.accent.copy(alpha = 0.16f) else Color.Transparent).clickable { playerTheme = value; prefs.edit().putString("player_theme", value).apply() }.padding(9.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Text(label, color = Color.White, modifier = Modifier.weight(1f))
+                                    Text(label, color = primaryText, modifier = Modifier.weight(1f))
                                     if (playerTheme == value) Icon(Icons.Rounded.CheckCircle, null, tint = th.accent)
                                 }
                             }
                             Text(tr("تأثير تغيير الملف أثناء التشغيل", "Track-change effect"), color = th.accent, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp))
                             listOf("glow" to tr("تلاشي ناعم", "Soft fade"), "slide" to tr("انزلاق أفقي", "Horizontal slide"), "rise" to tr("صعود", "Rise"), "drop" to tr("هبوط", "Drop"), "softzoom" to tr("تكبير لطيف", "Soft zoom"), "blur" to tr("ضبابي", "Blur dissolve"), "bounce" to tr("ارتداد", "Bounce"), "ripple" to tr("تموّج", "Ripple"), "shutter" to tr("غالق سريع", "Shutter"), "fade" to tr("تلاشي متداخل", "Cross fade")).forEach { (value, label) ->
                                 Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (playerEffect == value) th.accent.copy(alpha = 0.16f) else Color.Transparent).clickable { playerEffect = value; prefs.edit().putString("player_effect", value).apply() }.padding(9.dp), verticalAlignment = Alignment.CenterVertically) {
-                                    Text(label, color = Color.White, modifier = Modifier.weight(1f))
+                                    Text(label, color = primaryText, modifier = Modifier.weight(1f))
                                     if (playerEffect == value) Icon(Icons.Rounded.CheckCircle, null, tint = th.accent)
                                 }
                             }
                         }
                         "playback" -> {
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Text(tr("الموازن الصوتي", "Equalizer"), color = Color.White, modifier = Modifier.weight(1f))
+                                Text(tr("الموازن الصوتي", "Equalizer"), color = primaryText, modifier = Modifier.weight(1f))
                                 TextButton(onClick = { settingsSection = ""; equalizerDialog = true }) { Text(tr("فتح", "Open")) }
                             }
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Text(tr("التكرار", "Repeat"), color = Color.White, modifier = Modifier.weight(1f))
+                                Text(tr("التكرار", "Repeat"), color = primaryText, modifier = Modifier.weight(1f))
                                 TextButton(onClick = cycleRepeat) { Text(when (repeatMode) { Player.REPEAT_MODE_ONE -> tr("مقطع واحد", "One"); Player.REPEAT_MODE_ALL -> tr("الكل", "All"); else -> tr("إيقاف", "Off") }) }
                             }
                             Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Text(tr("التشغيل العشوائي", "Shuffle"), color = Color.White, modifier = Modifier.weight(1f))
+                                Text(tr("التشغيل العشوائي", "Shuffle"), color = primaryText, modifier = Modifier.weight(1f))
                                 Switch(checked = shuffleEnabled, onCheckedChange = { toggleShuffle() })
                             }
                         }
@@ -676,7 +676,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                 Column(Modifier.fillMaxWidth()) {
                     Text(
                         tr("أوقف المفتاح لإخفاء جميع الملفات الصوتية داخل المجلد. يمكنك إظهارها مجدداً في أي وقت.", "Turn a switch off to hide all audio files in that folder. You can show them again at any time."),
-                        color = Color.Gray,
+                        color = secondaryText,
                         fontSize = 12.sp
                     )
                     Spacer(Modifier.height(8.dp))
@@ -689,8 +689,8 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                 val label = path.substringAfterLast('/').ifBlank { path }
                                 Row(Modifier.fillMaxWidth().padding(vertical = 4.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Column(Modifier.weight(1f)) {
-                                        Text(label, color = Color.White, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                                        Text(entry.value.toString() + " " + tr("ملف صوتي", "audio files"), color = Color.Gray, fontSize = 11.sp, maxLines = 1)
+                                        Text(label, color = primaryText, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                                        Text(entry.value.toString() + " " + tr("ملف صوتي", "audio files"), color = secondaryText, fontSize = 11.sp, maxLines = 1)
                                     }
                                     Switch(
                                         checked = path !in hiddenFolders,
@@ -777,7 +777,7 @@ private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: A
         detectDragGestures(onDragEnd = { if (dy > 85) close() else if (dx < -60) next() else if (dx > 60) previous(); dx = 0f; dy = 0f }) { change, d -> dx += d.x; dy += d.y; change.consume() }
     }.padding(horizontal = 20.dp)) {
         Box(Modifier.fillMaxWidth().padding(top = 14.dp), contentAlignment = Alignment.Center) { Box(Modifier.width(42.dp).height(5.dp).clip(CircleShape).background(Color.Gray)) }
-        Row(Modifier.fillMaxWidth().padding(vertical = 15.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(onClick = close) { Icon(Icons.Rounded.KeyboardArrowDown, null, tint = Color.White) }; Text(if (ar) "قيد التشغيل" else "Now playing", color = Color.White, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center); Icon(Icons.Rounded.MoreHoriz, null, tint = Color.White) }
+        Row(Modifier.fillMaxWidth().padding(vertical = 15.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(onClick = close) { Icon(Icons.Rounded.KeyboardArrowDown, null, tint = Color.White) }; Text(if (ar) "قيد التشغيل" else "Now playing", color = th.primaryText, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center); Icon(Icons.Rounded.MoreHoriz, null, tint = Color.White) }
         Spacer(Modifier.weight(0.3f))
         Box(
             Modifier.fillMaxWidth().padding(horizontal = 18.dp).aspectRatio(1f)
@@ -815,15 +815,15 @@ private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: A
             }
         }, label = "now-playing-track") { animatedTrack ->
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
-                Text(animatedTrack.title, color = Color.White, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
-                Text(animatedTrack.artist, color = Color.LightGray, modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
+                Text(animatedTrack.title, color = th.primaryText, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(animatedTrack.artist, color = th.secondaryText, modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
             }
         }
         Column(Modifier.fillMaxWidth()) {
             Slider(value = currentPositionMs.coerceIn(0L, track.duration.coerceAtLeast(1L)).toFloat(), onValueChange = { seekTo(it.toLong()) }, valueRange = 0f..track.duration.coerceAtLeast(1L).toFloat(), colors = SliderDefaults.colors(thumbColor = playerAccent, activeTrackColor = playerAccent, inactiveTrackColor = Color.Gray.copy(alpha = 0.45f)))
             Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceBetween) {
-                Text(time(currentPositionMs), color = Color.LightGray, fontSize = 11.sp)
-                Text("-" + time((track.duration - currentPositionMs).coerceAtLeast(0L)) + " / " + time(track.duration), color = Color.LightGray, fontSize = 11.sp)
+                Text(time(currentPositionMs), color = th.secondaryText, fontSize = 11.sp)
+                Text("-" + time((track.duration - currentPositionMs).coerceAtLeast(0L)) + " / " + time(track.duration), color = th.secondaryText, fontSize = 11.sp)
             }
         }
         Spacer(Modifier.height(12.dp))
