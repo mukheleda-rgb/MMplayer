@@ -54,6 +54,7 @@ import androidx.compose.ui.draw.clip
 import androidx.compose.ui.draw.blur
 import androidx.compose.ui.layout.ContentScale
 import androidx.compose.ui.draw.rotate
+import androidx.compose.ui.draw.shadow
 import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.zIndex
@@ -261,7 +262,8 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
     var showFoldersDialog by remember { mutableStateOf(false) }
     var settingsSection by remember { mutableStateOf("") }
     var playerEffect by remember { mutableStateOf(prefs.getString("player_effect", "glow") ?: "glow") }
-    var playerTheme by remember { mutableStateOf(prefs.getString("player_theme", "glass") ?: "glass") }
+    var playerTheme by remember { mutableStateOf(prefs.getString("player_theme", "3d") ?: "3d") }
+    LaunchedEffect(Unit) { if (!prefs.getBoolean("player_theme_default_3d_v1", false)) { playerTheme = "3d"; prefs.edit().putString("player_theme", "3d").putBoolean("player_theme_default_3d_v1", true).apply() } }
     var swipeTabsEnabled by remember { mutableStateOf(prefs.getBoolean("swipe_tabs", true)) }
     var backgroundPickerTab by remember { mutableStateOf("home") }
     val tabKeys = listOf("home", "music", "quran", "lists", "settings")
@@ -578,7 +580,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                         }
                         "player" -> {
                             Text(tr("ثيم المشغل", "Player theme"), color = th.accent, fontWeight = FontWeight.Bold)
-                            listOf("glass" to tr("زجاجي", "Glass"), "classic" to tr("كلاسيكي", "Classic"), "neon" to tr("نيون", "Neon"), "minimal" to tr("بسيط", "Minimal")).forEach { (value, label) ->
+                            listOf("3d" to tr("ثلاثي الأبعاد (افتراضي)", "3D Neumorphism (Default)"), "glass" to tr("زجاجي", "Glass"), "classic" to tr("كلاسيكي", "Classic"), "neon" to tr("نيون", "Neon"), "minimal" to tr("بسيط", "Minimal")).forEach { (value, label) ->
                                 Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (playerTheme == value) th.accent.copy(alpha = 0.16f) else Color.Transparent).clickable { playerTheme = value; prefs.edit().putString("player_theme", value).apply() }.padding(9.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Text(label, color = Color.White, modifier = Modifier.weight(1f))
                                     if (playerTheme == value) Icon(Icons.Rounded.CheckCircle, null, tint = th.accent)
@@ -697,7 +699,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
 @Composable
 private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: AppTheme, ar: Boolean, playerEffect: String, playerTheme: String, currentPositionMs: Long, close: () -> Unit, toggle: () -> Unit, next: () -> Unit, previous: () -> Unit, play: (Track) -> Unit, seekTo: (Long) -> Unit, repeatMode: Int, cycleRepeat: () -> Unit, shuffleEnabled: Boolean, toggleShuffle: () -> Unit, openEqualizer: () -> Unit) {
     var dx by remember { mutableFloatStateOf(0f) }; var dy by remember { mutableFloatStateOf(0f) }
-    val playerBackground = when (playerTheme) { "glass" -> th.panel; "neon" -> Color(0xFF080B12); "minimal" -> th.bg; else -> th.bg }
+    val playerBackground = when (playerTheme) { "3d" -> Color(0xFF171A22); "glass" -> th.panel; "neon" -> Color(0xFF080B12); "minimal" -> th.bg; else -> th.bg }
     Column(Modifier.fillMaxSize().background(playerBackground).pointerInput(track.id) {
         detectDragGestures(onDragEnd = { if (dy > 85) close() else if (dx < -60) next() else if (dx > 60) previous(); dx = 0f; dy = 0f }) { change, d -> dx += d.x; dy += d.y; change.consume() }
     }.padding(horizontal = 20.dp)) {
