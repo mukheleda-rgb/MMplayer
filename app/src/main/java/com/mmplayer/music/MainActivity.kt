@@ -621,7 +621,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                                     Text(lists[name].orEmpty().size.toString() + " " + tr("ملف", "tracks"), color = secondaryText, fontSize = 12.sp)
                                                     Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
                                                         IconButton(onClick = { activeList = name; exportFile.launch(name + ".m3u") }) { Icon(Icons.Rounded.FileDownload, null, tint = th.accent) }
-                                                        IconButton(onClick = { lists = lists - name; putLists(ctx, lists) }) { Icon(Icons.Rounded.Delete, null, tint = Color(0xFFFF8888)) }
+                                                        IconButton(onClick = { pendingDeletePlaylist = name }) { Icon(Icons.Rounded.Delete, null, tint = Color(0xFFFF8888)) }
                                                     }
                                                 }
                                             }
@@ -719,6 +719,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                     Row(Modifier.fillMaxWidth().padding(vertical = 3.dp), verticalAlignment = Alignment.CenterVertically) {
                                         Text(selectedTrackIds.size.toString() + " " + tr("محدد", "selected"), color = secondaryText, modifier = Modifier.weight(1f))
                                         TextButton(enabled = selectedTrackIds.isNotEmpty(), onClick = { newName = ""; dialog = "new_from_selection" }) { Text(tr("إنشاء قائمة تشغيل", "Create playlist")) }
+                                        TextButton(enabled = selectedTrackIds.isNotEmpty(), onClick = { deleteTargets = pageShown.filter { it.id in selectedTrackIds }; dialog = "delete_tracks" }) { Text(tr("حذف من الجهاز", "Delete from device"), color = Color(0xFFFF7777)) }
                                         TextButton(onClick = { selectionMode = false; selectedTrackIds = emptySet() }) { Text(tr("إلغاء", "Cancel")) }
                                     }
                                 }
@@ -942,6 +943,23 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
             confirmButton = { TextButton(onClick = { equalizerDialog = false }) { Text(if (ar) "تم" else "Done") } }
         )
     }
+    if (pendingDeletePlaylist != null) {
+        val playlistName = pendingDeletePlaylist!!
+        AlertDialog(containerColor = th.panel, titleContentColor = th.primaryText, textContentColor = th.secondaryText,
+            onDismissRequest = { pendingDeletePlaylist = null },
+            title = { Text(tr("تأكيد حذف القائمة", "Confirm playlist deletion")) },
+            text = { Text(tr("هل تريد حذف قائمة التشغيل «$playlistName»؟ لن يتم حذف الملفات الصوتية من الهاتف.", "Delete playlist '$playlistName'? Audio files on the phone will remain.")) },
+            confirmButton = { TextButton(onClick = { lists = lists - playlistName; putLists(ctx, lists); if (activeList == playlistName) { activeList = ""; tab = "lists" }; pendingDeletePlaylist = null }) { Text(tr("حذف القائمة", "Delete playlist"), color = Color(0xFFFF7777)) } },
+            dismissButton = { TextButton(onClick = { pendingDeletePlaylist = null }) { Text(tr("إلغاء", "Cancel")) } })
+    }
+    if (dialog == "delete_tracks") {
+        AlertDialog(containerColor = th.panel, titleContentColor = th.primaryText, textContentColor = th.secondaryText,
+            onDismissRequest = { dialog = ""; deleteTargets = emptyList() },
+            title = { Text(tr("تأكيد الحذف من الجهاز", "Confirm device deletion")) },
+            text = { Text(if (deleteTargets.size == 1) tr("سيتم حذف الملف نهائياً من الهاتف بعد موافقة Android. لا يمكن التراجع عن هذه العملية.", "This file will be permanently deleted from the phone after Android approval. This cannot be undone.") else tr("سيتم حذف " + deleteTargets.size + " ملفات نهائياً من الهاتف بعد موافقة Android. لا يمكن التراجع عن هذه العملية.", deleteTargets.size.toString() + " files will be permanently deleted after Android approval. This cannot be undone.")) },
+            confirmButton = { TextButton(onClick = { val targets = deleteTargets; deleteTracks(targets) { success -> if (success) { val removed = targets.map { it.id }.toSet(); lists = lists.mapValues { (_, ids) -> ids.filterNot { it in removed } }; putLists(ctx, lists); selectedTrackIds = selectedTrackIds - removed }; deleteTargets = emptyList(); dialog = "" } }) { Text(tr("حذف نهائياً", "Delete permanently"), color = Color(0xFFFF7777)) } },
+            dismissButton = { TextButton(onClick = { dialog = ""; deleteTargets = emptyList() }) { Text(tr("إلغاء", "Cancel")) } })
+    }
     if (dialog == "new" || dialog == "new_from_selection") AlertDialog(containerColor = th.panel, titleContentColor = th.primaryText, textContentColor = th.secondaryText, iconContentColor = th.accent, onDismissRequest = { dialog = "" }, title = { Text(tr("قائمة جديدة", "New playlist"), color = primaryText) }, text = { OutlinedTextField(newName, { newName = it }, label = { Text(tr("اسم القائمة", "Playlist name")) }, colors = OutlinedTextFieldDefaults.colors(focusedTextColor = th.primaryText, unfocusedTextColor = th.primaryText, focusedBorderColor = th.accent, unfocusedBorderColor = th.secondaryText, focusedLabelColor = th.accent, unfocusedLabelColor = th.secondaryText, cursorColor = th.accent)) }, confirmButton = { TextButton(onClick = { if (newName.isNotBlank()) { val ids = if (dialog == "new_from_selection") selectedTrackIds.toList() else emptyList(); lists = lists + (newName.trim() to ids); putLists(ctx, lists); activeList = newName.trim(); selectedTrackIds = emptySet(); selectionMode = false }; newName = ""; dialog = "" }) { Text(tr("إنشاء", "Create")) } }, dismissButton = { TextButton(onClick = { dialog = ""; selectedTrackIds = emptySet(); selectionMode = false }) { Text(tr("إلغاء", "Cancel")) } })
     if (dialog == "add") AlertDialog(containerColor = th.panel, titleContentColor = th.primaryText, textContentColor = th.secondaryText, iconContentColor = th.accent, onDismissRequest = { dialog = "" }, title = { Text(tr("إضافة إلى قائمة", "Add to playlist")) }, text = { Column { lists.keys.forEach { n -> TextButton(onClick = { val t = selected; if (t != null) { lists = lists + (n to (lists[n].orEmpty() + t.id).distinct()); putLists(ctx, lists) }; selected = null; dialog = "" }) { Text(n) } } } }, confirmButton = { TextButton(onClick = { dialog = ""; selected = null }) { Text(tr("إغلاق", "Close")) } })
     selected?.let { t ->
@@ -952,7 +970,8 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
             TextButton(onClick = { dialog = "add" }) { Text(tr("إضافة إلى قائمة تشغيل", "Add to playlist")) }
             TextButton(onClick = { dialog = "new"; newName = "" }) { Text(tr("إنشاء قائمة جديدة", "Create new playlist")) }
             TextButton(onClick = { dialog = "details" }) { Text(tr("معلومات الملف وموقعه وحجمه", "File details, path and size")) }
-            TextButton(onClick = { lists = lists.mapValues { it.value - t.id }; putLists(ctx, lists); selected = null; Toast.makeText(ctx, tr("أزيل من القوائم فقط ولم يُحذف من الجهاز", "Removed from playlists only; file retained"), Toast.LENGTH_LONG).show() }) { Text(tr("إزالة من القوائم", "Remove from playlists")) }
+            TextButton(onClick = { lists = lists.mapValues { it.value - t.id }; putLists(ctx, lists); selected = null; Toast.makeText(ctx, tr("أزيل من القوائم فقط ولم يُحذف من الجهاز", "Removed from playlists only; file retained"), Toast.LENGTH_LONG).show() }) { Text(tr("إزالة من قوائم التشغيل", "Remove from playlists only")) }
+            TextButton(onClick = { deleteTargets = listOf(t); selected = null; dialog = "delete_tracks" }) { Text(tr("حذف نهائياً من الجهاز", "Permanently delete from device"), color = Color(0xFFFF7777)) }
             TextButton(onClick = { Toast.makeText(ctx, tr("تغيير اسم الملف الأصلي يحتاج إذن Android خاصاً؛ لم يتم تغيير الملف", "Renaming the original file requires Android permission; file unchanged"), Toast.LENGTH_LONG).show() }) { Text(tr("تعديل الاسم / الخصائص", "Edit name / properties")) }
         } }, confirmButton = { TextButton(onClick = { selected = null }) { Text(tr("إغلاق", "Close")) } })
         if (dialog == "details") AlertDialog(
