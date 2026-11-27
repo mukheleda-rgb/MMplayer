@@ -555,7 +555,12 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                         if (bg.isNotBlank()) AsyncImage(model = Uri.parse(bg), contentDescription = null, contentScale = ContentScale.Crop, modifier = Modifier.fillMaxSize().blur((tabBlur[pageKey] ?: 0f).dp))
                         Box(Modifier.fillMaxSize().background(if (bg.isBlank()) Color.Transparent else Color.Black.copy(alpha = tabDim[pageKey] ?: 0.68f)))
                         Column(Modifier.fillMaxSize().padding(horizontal = 16.dp)) {
-                            // The old app-title and refresh header is removed.
+                            if (activeTab == "home") {
+                                Column(Modifier.fillMaxWidth().padding(top = 12.dp, bottom = 10.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+                                    Text("MMplayer", style = androidx.compose.ui.text.TextStyle(brush = Brush.linearGradient(listOf(th.accent.copy(alpha = 0.96f), th.second.copy(alpha = 0.88f)))), fontSize = 25.sp, fontWeight = FontWeight.Bold, letterSpacing = 0.4.sp)
+                                    Text("by MOKHALAD", style = androidx.compose.ui.text.TextStyle(brush = Brush.linearGradient(listOf(th.secondaryText.copy(alpha = 0.82f), th.accent.copy(alpha = 0.68f)))), fontSize = 9.sp, letterSpacing = 1.5.sp, fontWeight = FontWeight.Light)
+                                }
+                            }
                             Column(Modifier.weight(1f).fillMaxWidth()) {
                     when (activeTab) {
                         "settings" -> {
@@ -1146,8 +1151,23 @@ private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: A
             }
         }
         IconButton(onClick = openEqualizer) { Icon(Icons.Rounded.Equalizer, null, tint = playerAccent) }
-        Spacer(Modifier.weight(0.2f))
-        Text(if (ar) "قائمة التشغيل الحالية" else "Current playlist", color = th.accent, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
+        Spacer(Modifier.height(8.dp))
+        Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+            Text(if (ar) "قائمة التشغيل الحالية" else "Current playlist", color = th.accent, fontSize = 12.sp, fontWeight = FontWeight.SemiBold, modifier = Modifier.weight(1f))
+            Text(queue.size.toString() + " " + if (ar) "ملف" else "tracks", color = th.secondaryText, fontSize = 10.sp)
+        }
+        LazyColumn(Modifier.fillMaxWidth().weight(0.72f, fill = false), contentPadding = PaddingValues(bottom = 12.dp), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+            items(queue, key = { it.id }) { item ->
+                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (item.id == track.id) th.accent.copy(alpha = 0.18f) else th.panel.copy(alpha = 0.45f)).clickable { play(item) }.padding(horizontal = 8.dp, vertical = 5.dp), verticalAlignment = Alignment.CenterVertically) {
+                    Art(item, Modifier.size(34.dp), th)
+                    Column(Modifier.weight(1f).padding(horizontal = 9.dp)) {
+                        Text(item.title, color = if (item.id == track.id) th.accent else th.primaryText, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                        Text(item.artist, color = th.secondaryText, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                    }
+                    if (item.id == track.id) Icon(Icons.Rounded.GraphicEq, null, tint = th.accent, modifier = Modifier.size(17.dp))
+                }
+            }
+        }
     }
 }
 @Composable
