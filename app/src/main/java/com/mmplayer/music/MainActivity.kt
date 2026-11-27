@@ -596,7 +596,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                 }
                             }
                             Text(tr("تأثير تغيير الملف أثناء التشغيل", "Track-change effect"), color = th.accent, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp))
-                            listOf("glow" to tr("تلاشي ناعم", "Soft fade"), "slide" to tr("انزلاق أفقي", "Horizontal slide"), "rise" to tr("صعود", "Rise"), "drop" to tr("هبوط", "Drop"), "rotate" to tr("دوران خفيف", "Soft rotate"), "blur" to tr("ضبابي", "Blur dissolve"), "bounce" to tr("ارتداد", "Bounce"), "ripple" to tr("تموّج", "Ripple"), "shutter" to tr("غالق سريع", "Shutter"), "fade" to tr("تلاشي متداخل", "Cross fade")).forEach { (value, label) ->
+                            listOf("glow" to tr("تلاشي ناعم", "Soft fade"), "slide" to tr("انزلاق أفقي", "Horizontal slide"), "rise" to tr("صعود", "Rise"), "drop" to tr("هبوط", "Drop"), "softzoom" to tr("تكبير لطيف", "Soft zoom"), "blur" to tr("ضبابي", "Blur dissolve"), "bounce" to tr("ارتداد", "Bounce"), "ripple" to tr("تموّج", "Ripple"), "shutter" to tr("غالق سريع", "Shutter"), "fade" to tr("تلاشي متداخل", "Cross fade")).forEach { (value, label) ->
                                 Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (playerEffect == value) th.accent.copy(alpha = 0.16f) else Color.Transparent).clickable { playerEffect = value; prefs.edit().putString("player_effect", value).apply() }.padding(9.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Text(label, color = Color.White, modifier = Modifier.weight(1f))
                                     if (playerEffect == value) Icon(Icons.Rounded.CheckCircle, null, tint = th.accent)
@@ -723,7 +723,7 @@ private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: A
                 "slide" -> (slideInHorizontally(tween(190)) { it / 3 } + fadeIn(tween(160))) togetherWith (slideOutHorizontally(tween(150)) { -it / 4 } + fadeOut(tween(120)))
                 "rise" -> (slideInVertically(tween(210)) { it / 2 } + fadeIn(tween(180))) togetherWith (slideOutVertically(tween(150)) { -it / 4 } + fadeOut(tween(120)))
                 "drop" -> (slideInVertically(tween(210)) { -it / 2 } + fadeIn(tween(180))) togetherWith (slideOutVertically(tween(150)) { it / 4 } + fadeOut(tween(120)))
-                "rotate" -> (fadeIn(tween(220)) + scaleIn(initialScale = 0.94f, animationSpec = tween(220))) togetherWith (fadeOut(tween(150)) + scaleOut(targetScale = 0.96f, animationSpec = tween(150)))
+                "softzoom" -> (fadeIn(tween(220)) + scaleIn(initialScale = 0.94f, animationSpec = tween(220))) togetherWith (fadeOut(tween(150)) + scaleOut(targetScale = 0.96f, animationSpec = tween(150)))
                 "blur" -> (fadeIn(tween(240)) + scaleIn(initialScale = 0.98f, animationSpec = tween(240))) togetherWith fadeOut(tween(160))
                 "bounce" -> (slideInHorizontally(tween(260)) { it / 2 } + fadeIn(tween(220))) togetherWith (slideOutHorizontally(tween(170)) { -it / 5 } + fadeOut(tween(140)))
                 "ripple" -> (fadeIn(tween(260)) + scaleIn(initialScale = 0.90f, animationSpec = tween(260))) togetherWith (fadeOut(tween(170)) + scaleOut(targetScale = 1.04f, animationSpec = tween(170)))
