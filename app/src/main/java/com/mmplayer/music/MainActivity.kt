@@ -259,7 +259,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
     var lang by remember { mutableStateOf(prefs.getString("lang", "ar") ?: "ar") }
     var themeNo by remember { mutableIntStateOf(prefs.getInt("theme", 0).coerceIn(0, 9)) }
     var themeMode by remember { mutableStateOf(prefs.getString("theme_mode", "dark") ?: "dark") }
-    var libraryLayout by remember { mutableStateOf(prefs.getString("library_layout", "list") ?: "list") }
+    var libraryLayout by remember { mutableStateOf((prefs.getString("library_layout", "list") ?: "list").let { if (it == "free") "grid" else it }) }
     var artworkShape by remember { mutableStateOf(prefs.getString("artwork_shape", "square") ?: "square") }
     var selectedTrackIds by remember { mutableStateOf(setOf<Long>()) }
     var selectionMode by remember { mutableStateOf(false) }
@@ -376,7 +376,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                 HorizontalPager(
                     state = pagerState,
                     modifier = Modifier.fillMaxSize().padding(pad),
-                    userScrollEnabled = swipeTabsEnabled && !(libraryLayout == "free" && tabKeys[pagerState.currentPage.coerceIn(tabKeys.indices)] in listOf("music", "quran")),
+                    userScrollEnabled = swipeTabsEnabled,
                     beyondViewportPageCount = 1,
                     pageSpacing = 0.dp
                 ) { page ->
@@ -435,14 +435,48 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                 if (lists.isEmpty()) {
                                     Text(tr("أنشئ قائمة أو استورد ملف M3U", "Create a playlist or import an M3U file"), color = secondaryText, modifier = Modifier.padding(top = 12.dp))
                                 } else {
-                                    LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
-                                        items(lists.keys.toList(), key = { it }) { name ->
-                                            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(th.panel).clickable { activeList = name; tab = "playlist" }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
-                                                Icon(Icons.Rounded.QueueMusic, null, tint = th.accent)
-                                                Text(name, color = primaryText, modifier = Modifier.weight(1f).padding(horizontal = 10.dp))
-                                                Text(lists[name].orEmpty().size.toString(), color = secondaryText)
-                                                IconButton(onClick = { activeList = name; exportFile.launch(name + ".m3u") }) { Icon(Icons.Rounded.FileDownload, null, tint = th.accent) }
-                                                IconButton(onClick = { lists = lists - name; putLists(ctx, lists) }) { Icon(Icons.Rounded.Delete, null, tint = Color(0xFFFF8888)) }
+                                    if (libraryLayout == "grid") {
+                                        LazyVerticalGrid(
+                                            columns = GridCells.Fixed(2),
+                                            modifier = Modifier.weight(1f).fillMaxWidth(),
+                                            contentPadding = PaddingValues(vertical = 6.dp),
+                                            horizontalArrangement = Arrangement.spacedBy(8.dp),
+                                            verticalArrangement = Arrangement.spacedBy(8.dp)
+                                        ) {
+                                            gridItems(lists.keys.toList(), key = { it }) { name ->
+                                                Column(
+                                                    Modifier.fillMaxWidth().clip(RoundedCornerShape(16.dp))
+                                                        .background(th.panel).clickable { activeList = name; tab = "playlist" }
+                                                        .padding(12.dp),
+                                                    horizontalAlignment = Alignment.CenterHorizontally
+                                                ) {
+                                                    Box(
+                                                        Modifier.fillMaxWidth().aspectRatio(1.15f).clip(RoundedCornerShape(12.dp))
+                                                            .background(Brush.linearGradient(listOf(th.accent.copy(alpha = .28f), th.panel))),
+                                                        contentAlignment = Alignment.Center
+                                                    ) {
+                                                        Icon(Icons.Rounded.QueueMusic, null, tint = th.accent, modifier = Modifier.size(42.dp))
+                                                    }
+                                                    Text(name, color = primaryText, maxLines = 1, overflow = TextOverflow.Ellipsis,
+                                                        modifier = Modifier.fillMaxWidth().padding(top = 8.dp))
+                                                    Text(lists[name].orEmpty().size.toString() + " " + tr("ملف", "tracks"), color = secondaryText, fontSize = 12.sp)
+                                                    Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.End) {
+                                                        IconButton(onClick = { activeList = name; exportFile.launch(name + ".m3u") }) { Icon(Icons.Rounded.FileDownload, null, tint = th.accent) }
+                                                        IconButton(onClick = { lists = lists - name; putLists(ctx, lists) }) { Icon(Icons.Rounded.Delete, null, tint = Color(0xFFFF8888)) }
+                                                    }
+                                                }
+                                            }
+                                        }
+                                    } else {
+                                        LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                            items(lists.keys.toList(), key = { it }) { name ->
+                                                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(th.panel).clickable { activeList = name; tab = "playlist" }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                                    Icon(Icons.Rounded.QueueMusic, null, tint = th.accent)
+                                                    Text(name, color = primaryText, modifier = Modifier.weight(1f).padding(horizontal = 10.dp))
+                                                    Text(lists[name].orEmpty().size.toString(), color = secondaryText)
+                                                    IconButton(onClick = { activeList = name; exportFile.launch(name + ".m3u") }) { Icon(Icons.Rounded.FileDownload, null, tint = th.accent) }
+                                                    IconButton(onClick = { lists = lists - name; putLists(ctx, lists) }) { Icon(Icons.Rounded.Delete, null, tint = Color(0xFFFF8888)) }
+                                                }
                                             }
                                         }
                                     }
@@ -593,7 +627,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                         }
                         "library" -> {
                             Text(tr("طريقة عرض الملفات", "Track layout"), color = th.accent, fontWeight = FontWeight.Bold)
-                            listOf("list" to tr("قائمة", "List"), "grid" to tr("شبكة", "Grid"), "free" to tr("شبكة حرة مثل Apple Watch", "Free-scrolling grid (Apple Watch style)")).forEach { (value, label) ->
+                            listOf("list" to tr("قائمة", "List"), "grid" to tr("شبكة", "Grid")).forEach { (value, label) ->
                                 Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (libraryLayout == value) th.accent.copy(alpha = .15f) else Color.Transparent).clickable { libraryLayout = value; prefs.edit().putString("library_layout", value).apply() }.padding(9.dp), verticalAlignment = Alignment.CenterVertically) {
                                     Text(label, color = primaryText, modifier = Modifier.weight(1f))
                                     if (libraryLayout == value) Icon(Icons.Rounded.CheckCircle, null, tint = th.accent)
