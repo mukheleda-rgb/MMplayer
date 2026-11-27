@@ -598,10 +598,13 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                         else -> visibleTracks.filter { !it.quran }
                     } }
                     val pageFiltered = remember(pageBase, search, favoritesOnly, favoriteIds) { pageBase.filter { (it.title.contains(search, true) || it.artist.contains(search, true)) && (!favoritesOnly || it.id in favoriteIds) } }
-                    val pageShown = remember(pageFiltered, sort, manual) { when (sort) {
+                    val pageShown = remember(pageFiltered, sort, manual, playCounts) { when (sort) {
                         "name" -> pageFiltered.sortedBy { it.title.lowercase() }
+                        "artist" -> pageFiltered.sortedBy { it.artist.lowercase() }
                         "date" -> pageFiltered.sortedByDescending { it.added }
                         "size" -> pageFiltered.sortedByDescending { it.size }
+                        "duration" -> pageFiltered.sortedByDescending { it.duration }
+                        "popular" -> pageFiltered.sortedByDescending { playCounts[it.id] ?: 0 }
                         else -> if (manual.isEmpty()) pageFiltered else pageFiltered.sortedBy { manual.indexOf(it.id).let { n -> if (n < 0) Int.MAX_VALUE else n } }
                     } }
                     Box(Modifier.fillMaxSize().background(th.bg)) {
@@ -837,7 +840,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                     Box {
                                         IconButton(onClick = { sortMenu = true }, modifier = Modifier.size(40.dp)) { Icon(Icons.Rounded.Sort, tr("ترتيب الملفات", "Sort files"), tint = th.accent) }
                                         DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
-                                            listOf("manual" to tr("يدوي", "Manual"), "name" to tr("الاسم", "Name"), "date" to tr("التاريخ", "Date"), "size" to tr("الحجم", "Size")).forEach { (v, label) -> DropdownMenuItem(text = { Text(label) }, onClick = { sort = v; sortMenu = false }) }
+                                            listOf("manual" to tr("يدوي", "Manual"), "name" to tr("الاسم", "Name"), "artist" to tr("الفنان", "Artist"), "date" to tr("الأحدث", "Newest"), "size" to tr("الحجم", "File size"), "duration" to tr("المدة", "Duration"), "popular" to tr("الأكثر تشغيلاً", "Most played")).forEach { (v, label) -> DropdownMenuItem(text = { Text(label) }, onClick = { sort = v; sortMenu = false }) }
                                         }
                                     }
                                     if (selectionMode) {
