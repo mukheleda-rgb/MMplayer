@@ -636,7 +636,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                                     Text(name, color = primaryText, modifier = Modifier.weight(1f).padding(horizontal = 10.dp))
                                                     Text(lists[name].orEmpty().size.toString(), color = secondaryText)
                                                     IconButton(onClick = { activeList = name; exportFile.launch(name + ".m3u") }) { Icon(Icons.Rounded.FileDownload, null, tint = th.accent) }
-                                                    IconButton(onClick = { lists = lists - name; putLists(ctx, lists) }) { Icon(Icons.Rounded.Delete, null, tint = Color(0xFFFF8888)) }
+                                                    IconButton(onClick = { pendingDeletePlaylist = name }) { Icon(Icons.Rounded.Delete, null, tint = Color(0xFFFF8888)) }
                                                 }
                                             }
                                         }
