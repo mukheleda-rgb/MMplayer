@@ -1164,11 +1164,30 @@ private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: A
         IconButton(onClick = openEqualizer) { Icon(Icons.Rounded.Equalizer, null, tint = playerAccent) }
         Spacer(Modifier.weight(0.2f))
         Text(if (ar) "قائمة التشغيل الحالية" else "Current playlist", color = th.accent, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
-        LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 16.dp)) {
-            items(queue, key = { it.id }) { item -> Column(Modifier.width(88.dp).clip(RoundedCornerShape(12.dp)).background(if (item.id == track.id) th.accent.copy(alpha = 0.20f) else th.panel).border(if (item.id == track.id) 2.dp else 1.dp, if (item.id == track.id) th.accent else Color.Transparent, RoundedCornerShape(12.dp)).clickable { play(item) }.padding(6.dp), horizontalAlignment = Alignment.CenterHorizontally) { Art(item, Modifier.size(72.dp), th); Text(item.title, color = if (item.id == track.id) th.accent else Color.White, fontSize = 10.sp, fontWeight = if (item.id == track.id) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis) } }
+        AnimatedContent(targetState = track, transitionSpec = {
+            val forward = queue.indexOfFirst { it.id == targetState.id } >= queue.indexOfFirst { it.id == initialState.id }
+            (slideInHorizontally(tween(280)) { width -> if (forward) width else -width } + fadeIn(tween(220))) togetherWith
+                (slideOutHorizontally(tween(280)) { width -> if (forward) -width else width } + fadeOut(tween(180)))
+        }, label = "three-track-carousel") { shownTrack ->
+            val shownIndex = queue.indexOfFirst { it.id == shownTrack.id }.let { if (it < 0) 0 else it }
+            Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+                PlayerNeighborCard(queue.getOrNull(shownIndex - 1), th, false) { previous() }
+                PlayerNeighborCard(shownTrack, th, true) { }
+                PlayerNeighborCard(queue.getOrNull(shownIndex + 1), th, false) { next() }
+            }
         }
     }
 }
+@Composable
+private fun PlayerNeighborCard(track: Track?, th: AppTheme, selected: Boolean, onClick: () -> Unit) {
+    if (track == null) Spacer(Modifier.width(if (selected) 108.dp else 76.dp)) else {
+        Column(Modifier.width(if (selected) 108.dp else 76.dp).clip(RoundedCornerShape(13.dp)).background(if (selected) th.accent.copy(alpha = 0.13f) else Color.Transparent).clickable(enabled = !selected, onClick = onClick).padding(5.dp), horizontalAlignment = Alignment.CenterHorizontally) {
+            Art(track, Modifier.size(if (selected) 96.dp else 64.dp), th)
+            Text(track.title, color = if (selected) th.accent else th.secondaryText, fontSize = if (selected) 11.sp else 9.sp, fontWeight = if (selected) FontWeight.Bold else FontWeight.Normal, maxLines = 1, overflow = TextOverflow.Ellipsis)
+        }
+    }
+}
+
 @Composable
 private fun Art(t: Track, m: Modifier, th: AppTheme, circular: Boolean = false) {
     Box(m.clip(if (circular) CircleShape else RoundedCornerShape(13.dp)).background(th.panel), contentAlignment = Alignment.Center) {
