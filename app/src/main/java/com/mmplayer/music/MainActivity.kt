@@ -99,6 +99,12 @@ import androidx.media3.common.MediaMetadata
 import androidx.media3.common.Player
 import androidx.media3.session.MediaController
 import androidx.media3.session.SessionToken
+import androidx.lifecycle.Lifecycle
+import androidx.lifecycle.lifecycleScope
+import androidx.lifecycle.repeatOnLifecycle
+import kotlinx.coroutines.delay
+import kotlinx.coroutines.isActive
+import kotlinx.coroutines.launch
 import coil.compose.AsyncImage
 import java.io.File
 import java.util.concurrent.Executors
@@ -183,6 +189,19 @@ class MainActivity : ComponentActivity() {
     }
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Render immediately; the playback service may take time to connect.
+        setContent {
+            MaterialTheme {
+                Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+                        CircularProgressIndicator()
+                        Spacer(Modifier.height(14.dp))
+                        Text("MMplayer", fontSize = 24.sp, fontWeight = FontWeight.Black)
+                        Text("جارٍ تهيئة مشغل الصوت...", color = MaterialTheme.colorScheme.onSurfaceVariant)
+                    }
+                }
+            }
+        }
         pendingExternalUri = externalAudioUri(intent)
         fadeDurationMs = getSharedPreferences("mmplayer", MODE_PRIVATE).getLong("fade_duration_ms", 0L).coerceIn(0L, 8000L)
         tracks = loadCachedTracks()
@@ -202,10 +221,15 @@ class MainActivity : ComponentActivity() {
         future.addListener({
             if (isFinishing || isDestroyed) return@addListener
             player = future.get()
+            restorePlayerState()
             pendingExternalUri?.let { uri -> pendingExternalUri = null; openExternalAudio(uri) }
             player.addListener(object : Player.Listener {
                 override fun onMediaItemTransition(mediaItem: MediaItem?, reason: Int) {
+                    val mediaId = mediaItem?.mediaId.orEmpty()
+                    val trackId = mediaId.removePrefix("mmplayer_track:").toLongOrNull()
                     current = activeQueue.getOrNull(player.currentMediaItemIndex)
+                        ?: trackId?.let { id -> tracks.firstOrNull { it.id == id } }
+                    playing = player.isPlaying
                     if (fadeDurationMs > 0L) {
                         val generation = ++fadeGeneration
                         player.volume = 0f
@@ -223,26 +247,53 @@ class MainActivity : ComponentActivity() {
                     } else player.volume = 1f
                 }
                 override fun onIsPlayingChanged(isPlaying: Boolean) { playing = isPlaying }
+                override fun onRepeatModeChanged(mode: Int) { repeatMode = mode }
+                override fun onShuffleModeEnabledChanged(enabled: Boolean) { shuffleEnabled = enabled }
             })
             setContent {
                 MMApp(tracks, current, playing, activeQueue, { track, queue -> play(track, queue) }, { resumeLastTrack() }, { toggle() }, { step(1) }, { step(-1) }, { refreshLibrary() }, libraryMessage, repeatMode, { cycleRepeat() }, shuffleEnabled, { toggleShuffle() }, equalizerEnabled, equalizerLevels, equalizerRange, { updateEqualizerEnabled(it) }, { band, level -> setEqualizerBand(band, level) }, fadeDurationMs, { fadeDurationMs = it.coerceIn(0L, 8000L); getSharedPreferences("mmplayer", MODE_PRIVATE).edit().putLong("fade_duration_ms", fadeDurationMs).apply(); player.volume = 1f }, currentPositionState, { position -> if (player.mediaItemCount > 0) player.seekTo(position.coerceIn(0L, player.duration.coerceAtLeast(0L))) }, { items, done -> requestDeleteTracks(items, done) })
             }
             refreshLibrary()
-            val ticker = android.os.Handler(mainLooper)
-            val tick = object : Runnable {
-                override fun run() {
-                    if (!isFinishing && !isDestroyed) {
-                        currentPositionMs = if (player.mediaItemCount > 0) player.currentPosition else currentPositionMs
+        }, ContextCompat.getMainExecutor(this))
+        // Update progress only while the Activity is visible.
+        lifecycleScope.launch {
+            repeatOnLifecycle(Lifecycle.State.STARTED) {
+                while (isActive) {
+                    if (::player.isInitialized && player.mediaItemCount > 0) {
+                        currentPositionMs = player.currentPosition
                         if (fadeDurationMs > 0L && player.isPlaying && player.duration > 0L && player.currentMediaItemIndex < player.mediaItemCount - 1) {
                             val remaining = player.duration - player.currentPosition
                             if (remaining in 1..fadeDurationMs) player.volume = (remaining.toFloat() / fadeDurationMs).coerceIn(0f, 1f)
                         }
-                        ticker.postDelayed(this, 500)
                     }
+                    delay(500L)
                 }
             }
-            ticker.post(tick)
-        }, ContextCompat.getMainExecutor(this))
+        }
+    }
+
+    private fun restorePlayerState() {
+        if (!::player.isInitialized) return
+        val restored = player.mediaItems.mapNotNull { item ->
+            val id = item.mediaId.removePrefix("mmplayer_track:").toLongOrNull()
+            val known = id?.let { key -> tracks.firstOrNull { it.id == key } }
+            known ?: run {
+                val uri = item.localConfiguration?.uri ?: return@mapNotNull null
+                val title = item.mediaMetadata.title?.toString() ?: "Audio"
+                val artist = item.mediaMetadata.artist?.toString() ?: "Unknown artist"
+                Track(id ?: -kotlin.math.abs(uri.toString().hashCode().toLong()) - 1L, title, artist, uri, 0L, false, 0L, 0L, 0L, "")
+            }
+        }
+        if (restored.isNotEmpty()) activeQueue = restored
+        current = activeQueue.getOrNull(player.currentMediaItemIndex)
+            ?: player.currentMediaItem?.let { item ->
+                val id = item.mediaId.removePrefix("mmplayer_track:").toLongOrNull()
+                id?.let { key -> tracks.firstOrNull { it.id == key } }
+            }
+        playing = player.isPlaying
+        repeatMode = player.repeatMode
+        shuffleEnabled = player.shuffleModeEnabled
+        currentPositionMs = player.currentPosition
     }
 
     @Suppress("DEPRECATION")
@@ -429,10 +480,11 @@ class MainActivity : ComponentActivity() {
         }
     }
     private fun play(t: Track, requestedQueue: List<Track>) {
+        if (!::player.isInitialized) return
         val queue = requestedQueue.distinctBy { it.id }.ifEmpty { listOf(t) }
         val index = queue.indexOfFirst { it.id == t.id }.coerceAtLeast(0)
         activeQueue = queue
-        player.setMediaItems(queue.map { track -> MediaItem.Builder().setUri(track.uri).setMediaMetadata(MediaMetadata.Builder().setTitle(track.title).setArtist(track.artist).apply { track.cover?.let { setArtworkUri(it) } }.build()).build() }, index, 0L)
+        player.setMediaItems(queue.map { track -> MediaItem.Builder().setMediaId("mmplayer_track:" + track.id).setUri(track.uri).setMediaMetadata(MediaMetadata.Builder().setTitle(track.title).setArtist(track.artist).apply { track.cover?.let { setArtworkUri(it) } }.build()).build() }, index, 0L)
         player.repeatMode = repeatMode
         player.shuffleModeEnabled = shuffleEnabled
         player.prepare()
@@ -452,7 +504,7 @@ class MainActivity : ComponentActivity() {
         val position = if (track.duration > 0L) savedPosition.coerceAtMost((track.duration - 1000L).coerceAtLeast(0L)) else savedPosition
         activeQueue = queue
         player.setMediaItems(
-            queue.map { item -> MediaItem.Builder().setUri(item.uri).setMediaMetadata(
+            queue.map { item -> MediaItem.Builder().setMediaId("mmplayer_track:" + item.id).setUri(item.uri).setMediaMetadata(
                 MediaMetadata.Builder().setTitle(item.title).setArtist(item.artist)
                     .apply { item.cover?.let { setArtworkUri(it) } }.build()
             ).build() },
@@ -467,9 +519,9 @@ class MainActivity : ComponentActivity() {
         playing = true
         setupEqualizer()
     }
-    private fun toggle() { if (player.isPlaying) player.pause() else if (current != null) player.play() }
+    private fun toggle() { if (!::player.isInitialized) return; if (player.isPlaying) player.pause() else if (current != null) player.play() }
     private fun step(d: Int) {
-        if (player.mediaItemCount > 0) {
+        if (::player.isInitialized && player.mediaItemCount > 0) {
             if (d > 0) player.seekToNextMediaItem() else player.seekToPreviousMediaItem()
         }
     }
