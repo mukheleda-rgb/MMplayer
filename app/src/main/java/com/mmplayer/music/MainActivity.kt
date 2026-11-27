@@ -140,6 +140,17 @@ class MainActivity : ComponentActivity() {
     private var deleteResultCallback: ((Boolean) -> Unit)? = null
     private var legacyDeleteItems: List<Track> = emptyList()
     private var legacyDeleteIndex = 0
+    private var waitingLegacyDelete: Pair<List<Track>, (Boolean) -> Unit>? = null
+    private val legacyWritePermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { granted ->
+        val pending = waitingLegacyDelete
+        waitingLegacyDelete = null
+        if (granted && pending != null) {
+            legacyDeleteItems = pending.first
+            legacyDeleteIndex = 0
+            deleteResultCallback = pending.second
+            deleteLegacyNext()
+        } else pending?.second?.invoke(false)
+    }
     private val deleteLauncher = registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
         val approved = result.resultCode == Activity.RESULT_OK
         if (legacyDeleteItems.isNotEmpty()) {
@@ -209,6 +220,9 @@ class MainActivity : ComponentActivity() {
                 Toast.makeText(this, e.localizedMessage ?: "تعذر طلب حذف الملفات", Toast.LENGTH_LONG).show()
                 onResult(false)
             }
+        } else if (Build.VERSION.SDK_INT < 29 && ContextCompat.checkSelfPermission(this, Manifest.permission.WRITE_EXTERNAL_STORAGE) != PackageManager.PERMISSION_GRANTED) {
+            waitingLegacyDelete = targets to onResult
+            legacyWritePermission.launch(Manifest.permission.WRITE_EXTERNAL_STORAGE)
         } else {
             legacyDeleteItems = targets
             legacyDeleteIndex = 0
