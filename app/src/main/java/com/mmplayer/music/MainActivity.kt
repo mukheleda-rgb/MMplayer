@@ -492,7 +492,8 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                 tab != "home" -> tab = "home"
             }
         }
-        if (expanded && current != null) {
+        AnimatedContent(targetState = expanded && current != null, transitionSpec = { (fadeIn(tween(230)) + scaleIn(initialScale = 0.94f, animationSpec = tween(230))) togetherWith (fadeOut(tween(170)) + scaleOut(targetScale = 0.97f, animationSpec = tween(170))) }, label = "player-expand-collapse") { showFullPlayer ->
+        if (showFullPlayer && current != null) {
             FullPlayer(current, playerQueue, playing, th, ar, playerEffect, playerTheme, currentPositionMs, { expanded = false }, toggle, next, previous, { play(it, playerQueue) }, { seekTo(it) }, repeatMode, cycleRepeat, shuffleEnabled, toggleShuffle, { equalizerDialog = true })
         } else {
             Scaffold(containerColor = th.bg, bottomBar = {
@@ -745,7 +746,8 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                 }
             }
         }
-    } 
+        }
+    }
     if (settingsSection.isNotBlank()) {
         val sectionTitle = when (settingsSection) {
             "appearance" -> tr("المظهر واللغة", "Appearance & language")
