@@ -321,6 +321,32 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
             }
         }
     }
+    if (equalizerDialog) {
+        AlertDialog(
+            onDismissRequest = { equalizerDialog = false },
+            title = { Text(if (ar) "المعادل الصوتي" else "Equalizer") },
+            text = {
+                Column(Modifier.fillMaxWidth()) {
+                    Row(verticalAlignment = Alignment.CenterVertically) {
+                        Text(if (ar) "تفعيل المعادل" else "Enable equalizer", modifier = Modifier.weight(1f))
+                        Switch(checked = equalizerEnabled, onCheckedChange = setEqualizerEnabled)
+                    }
+                    val labels = listOf("60 Hz", "230 Hz", "910 Hz", "3.6 kHz", "14 kHz")
+                    equalizerLevels.forEachIndexed { index, level ->
+                        Column(Modifier.fillMaxWidth().padding(vertical = 2.dp)) {
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(labels.getOrElse(index) { "Band " + (index + 1) }, modifier = Modifier.weight(1f))
+                                Text((level / 100).toString() + " dB")
+                            }
+                            Slider(value = level.toFloat().coerceIn(equalizerRange.first.toFloat(), equalizerRange.last.toFloat()), onValueChange = { setEqualizerBand(index, it.toInt()) }, valueRange = equalizerRange.first.toFloat()..equalizerRange.last.toFloat(), enabled = equalizerEnabled)
+                        }
+                    }
+                    if (equalizerLevels.isEmpty()) Text(if (ar) "المعادل غير متاح على هذا الجهاز حالياً." else "Equalizer is not currently available on this device.")
+                }
+            },
+            confirmButton = { TextButton(onClick = { equalizerDialog = false }) { Text(if (ar) "تم" else "Done") } }
+        )
+    }
     if (dialog == "new") AlertDialog(onDismissRequest = { dialog = "" }, title = { Text(tr("قائمة جديدة", "New playlist")) }, text = { OutlinedTextField(newName, { newName = it }, label = { Text(tr("اسم القائمة", "Playlist name")) }) }, confirmButton = { TextButton(onClick = { if (newName.isNotBlank()) { lists = lists + (newName.trim() to emptyList()); putLists(ctx, lists); activeList = newName.trim() }; newName = ""; dialog = "" }) { Text(tr("إنشاء", "Create")) } }, dismissButton = { TextButton(onClick = { dialog = "" }) { Text(tr("إلغاء", "Cancel")) } })
     if (dialog == "add") AlertDialog(onDismissRequest = { dialog = "" }, title = { Text(tr("إضافة إلى قائمة", "Add to playlist")) }, text = { Column { lists.keys.forEach { n -> TextButton(onClick = { val t = selected; if (t != null) { lists = lists + (n to (lists[n].orEmpty() + t.id).distinct()); putLists(ctx, lists) }; selected = null; dialog = "" }) { Text(n) } } } }, confirmButton = { TextButton(onClick = { dialog = ""; selected = null }) { Text(tr("إغلاق", "Close")) } })
     selected?.let { t ->
@@ -372,6 +398,7 @@ private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: A
                 }, color = if (repeatMode != Player.REPEAT_MODE_OFF) th.accent else Color.LightGray)
             }
         }
+        IconButton(onClick = openEqualizer) { Icon(Icons.Rounded.Equalizer, null, tint = th.accent) }
         Spacer(Modifier.weight(0.2f))
         Text(if (ar) "قائمة التشغيل الحالية" else "Current playlist", color = th.accent, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
         LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(bottom = 16.dp)) {
