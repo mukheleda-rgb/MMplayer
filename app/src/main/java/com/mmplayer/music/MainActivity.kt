@@ -360,7 +360,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                             val recent = visibleTracks.sortedByDescending { it.added }.take(10)
                             val popular = visibleTracks.sortedByDescending { playCounts[it.id] ?: 0 }.filter { (playCounts[it.id] ?: 0) > 0 }.take(10)
                             val last = visibleTracks.firstOrNull { it.id == prefs.getLong("last_track_id", -1L) }
-                            Column(Modifier.fillMaxWidth()) {
+                            Column(Modifier.fillMaxWidth().verticalScroll(rememberScrollState())) {
                                 Box(Modifier.fillMaxWidth().height(170.dp), contentAlignment = Alignment.Center) {
                                     Text("MMplayer", color = Color.White, fontSize = 48.sp, fontWeight = FontWeight.ExtraBold)
                                     Text(tr("مساحتك الصوتية", "YOUR AUDIO SPACE"), color = th.accent, fontSize = 11.sp, modifier = Modifier.align(Alignment.BottomCenter).padding(bottom = 12.dp), letterSpacing = 3.sp)
