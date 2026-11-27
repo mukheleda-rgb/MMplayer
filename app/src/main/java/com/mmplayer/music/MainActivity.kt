@@ -93,6 +93,7 @@ import androidx.media3.session.SessionToken
 import coil.compose.AsyncImage
 import java.io.File
 import java.util.concurrent.Executors
+import java.util.concurrent.atomic.AtomicInteger
 import coil.ImageLoader
 import coil.Coil
 import coil.disk.DiskCache
@@ -136,6 +137,7 @@ class MainActivity : ComponentActivity() {
     private var equalizerRange by mutableStateOf(-1500..1500)
     private var libraryMessage by mutableStateOf("")
     private val libraryExecutor = Executors.newSingleThreadExecutor()
+    private val scanGeneration = AtomicInteger(0)
     private lateinit var artworkLoader: ImageLoader
     private var deleteResultCallback: ((Boolean) -> Unit)? = null
     private var legacyDeleteItems: List<Track> = emptyList()
@@ -293,7 +295,9 @@ class MainActivity : ComponentActivity() {
 
     private fun preloadArtwork(items: List<Track>) {
         if (!::artworkLoader.isInitialized) return
-        items.asSequence().mapNotNull { it.cover }.distinct().forEach { cover ->
+        // Warm only a small initial batch; loading every album cover at once can
+        // create unnecessary disk I/O and memory pressure on large libraries.
+        items.asSequence().mapNotNull { it.cover }.distinct().take(24).forEach { cover ->
             artworkLoader.enqueue(
                 ImageRequest.Builder(applicationContext)
                     .data(cover)
@@ -306,33 +310,49 @@ class MainActivity : ComponentActivity() {
     }
 
     private fun scan() {
+        val generation = scanGeneration.incrementAndGet()
         libraryExecutor.execute {
+            // Ignore queued scans that have already been superseded by a newer refresh.
+            if (generation != scanGeneration.get()) return@execute
             val u = MediaStore.Audio.Media.EXTERNAL_CONTENT_URI
             val cols = arrayOf(MediaStore.Audio.Media._ID, MediaStore.Audio.Media.TITLE, MediaStore.Audio.Media.ARTIST, MediaStore.Audio.Media.DURATION, MediaStore.Audio.Media.ALBUM_ID, MediaStore.Audio.Media.SIZE, MediaStore.Audio.Media.DATE_ADDED, MediaStore.Audio.Media.DATA)
             val found = mutableListOf<Track>()
             try {
                 contentResolver.query(u, cols, null, null, MediaStore.Audio.Media.TITLE + " COLLATE NOCASE ASC")?.use { c: Cursor ->
+                    val idCol = c.getColumnIndexOrThrow(MediaStore.Audio.Media._ID)
+                    val titleCol = c.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)
+                    val artistCol = c.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)
+                    val durationCol = c.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)
+                    val albumCol = c.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)
+                    val sizeCol = c.getColumnIndexOrThrow(MediaStore.Audio.Media.SIZE)
+                    val addedCol = c.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_ADDED)
+                    val pathCol = c.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA)
                     while (c.moveToNext()) {
-                        val id = c.getLong(c.getColumnIndexOrThrow(MediaStore.Audio.Media._ID))
-                        val title = c.getString(c.getColumnIndexOrThrow(MediaStore.Audio.Media.TITLE)) ?: "Unknown"
-                        val artist = c.getString(c.getColumnIndexOrThrow(MediaStore.Audio.Media.ARTIST)) ?: "Unknown artist"
+                        if (generation != scanGeneration.get()) return@execute
+                        val id = c.getLong(idCol)
+                        val title = c.getString(titleCol) ?: "Unknown"
+                        val artist = c.getString(artistCol) ?: "Unknown artist"
                         val q = (title + " " + artist).contains(Regex("quran|قرآن|قران|سورة|سوره|تلاوة|تلاوه|عبدالباسط|مشاري|السديس|العفاسي", RegexOption.IGNORE_CASE))
-                        found.add(Track(id, title, artist, ContentUris.withAppendedId(u, id), c.getLong(c.getColumnIndexOrThrow(MediaStore.Audio.Media.DURATION)), q, c.getLong(c.getColumnIndexOrThrow(MediaStore.Audio.Media.ALBUM_ID)), c.getLong(c.getColumnIndexOrThrow(MediaStore.Audio.Media.SIZE)), c.getLong(c.getColumnIndexOrThrow(MediaStore.Audio.Media.DATE_ADDED)), c.getString(c.getColumnIndexOrThrow(MediaStore.Audio.Media.DATA)) ?: ""))
+                        found.add(Track(id, title, artist, ContentUris.withAppendedId(u, id), c.getLong(durationCol), q, c.getLong(albumCol), c.getLong(sizeCol), c.getLong(addedCol), c.getString(pathCol) ?: ""))
                     }
                 }
+                if (generation != scanGeneration.get()) return@execute
                 saveCachedTracks(found)
                 preloadArtwork(found)
                 runOnUiThread {
+                    if (generation != scanGeneration.get() || isFinishing || isDestroyed) return@runOnUiThread
                     tracks = found
                     libraryMessage = if (found.isEmpty()) "لم يتم العثور على ملفات صوتية. تأكد من وجود ملفات موسيقى في الهاتف." else "تم فحص وحفظ " + found.size + " ملف"
                 }
             } catch (e: SecurityException) {
                 runOnUiThread {
+                    if (generation != scanGeneration.get() || isFinishing || isDestroyed) return@runOnUiThread
                     if (tracks.isEmpty()) tracks = emptyList()
                     libraryMessage = "لا توجد صلاحية للوصول إلى ملفات الصوت. اضغط تحديث واسمح بالوصول."
                 }
             } catch (e: Exception) {
                 runOnUiThread {
+                    if (generation != scanGeneration.get() || isFinishing || isDestroyed) return@runOnUiThread
                     libraryMessage = "تعذر فحص ملفات الصوت: " + (e.localizedMessage ?: "خطأ غير معروف")
                 }
             }
