@@ -48,6 +48,7 @@ import androidx.compose.ui.unit.dp
 import androidx.compose.ui.unit.sp
 import androidx.core.content.ContextCompat
 import androidx.media3.common.MediaItem
+import androidx.media3.common.Player
 import androidx.media3.exoplayer.ExoPlayer
 import coil.compose.AsyncImage
 import org.json.JSONArray
@@ -76,6 +77,9 @@ class MainActivity : ComponentActivity() {
     private var tracks by mutableStateOf(listOf<Track>())
     private var current by mutableStateOf<Track?>(null)
     private var playing by mutableStateOf(false)
+    private var activeQueue by mutableStateOf(listOf<Track>())
+    private var repeatMode by mutableIntStateOf(Player.REPEAT_MODE_OFF)
+    private var shuffleEnabled by mutableStateOf(false)
     private var libraryMessage by mutableStateOf("")
     private val permission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         if (it) scan() else {
@@ -87,7 +91,7 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         player = ExoPlayer.Builder(this).build()
         setContent {
-            MMApp(tracks, current, playing, { play(it) }, { toggle() }, { step(1) }, { step(-1) }, { refreshLibrary() }, libraryMessage)
+            MMApp(tracks, current, playing, activeQueue, { track, queue -> play(track, queue) }, { toggle() }, { step(1) }, { step(-1) }, { refreshLibrary() }, libraryMessage, repeatMode, { cycleRepeat() }, shuffleEnabled, { toggleShuffle() })
         }
         refreshLibrary()
     }
@@ -118,9 +122,36 @@ class MainActivity : ComponentActivity() {
             libraryMessage = "تعذر فحص ملفات الصوت: " + (e.localizedMessage ?: "خطأ غير معروف")
         }
     }
-    private fun play(t: Track) { current = t; player.setMediaItem(MediaItem.fromUri(t.uri)); player.prepare(); player.play(); playing = true }
-    private fun toggle() { if (player.isPlaying) { player.pause(); playing = false } else if (current != null) { player.play(); playing = true } }
-    private fun step(d: Int) { val a = tracks.filter { it.quran == (current?.quran ?: false) }; val i = a.indexOfFirst { it.id == current?.id }; if (a.isNotEmpty()) play(a[(i + d + a.size) % a.size]) }
+    private fun play(t: Track, requestedQueue: List<Track>) {
+        val queue = requestedQueue.distinctBy { it.id }.ifEmpty { listOf(t) }
+        val index = queue.indexOfFirst { it.id == t.id }.coerceAtLeast(0)
+        activeQueue = queue
+        player.setMediaItems(queue.map { MediaItem.fromUri(it.uri) }, index, 0L)
+        player.repeatMode = repeatMode
+        player.shuffleModeEnabled = shuffleEnabled
+        player.prepare()
+        player.play()
+        current = t
+        playing = true
+    }
+    private fun toggle() { if (player.isPlaying) player.pause() else if (current != null) player.play() }
+    private fun step(d: Int) {
+        if (player.mediaItemCount > 0) {
+            if (d > 0) player.seekToNextMediaItem() else player.seekToPreviousMediaItem()
+        }
+    }
+    private fun cycleRepeat() {
+        repeatMode = when (repeatMode) {
+            Player.REPEAT_MODE_OFF -> Player.REPEAT_MODE_ALL
+            Player.REPEAT_MODE_ALL -> Player.REPEAT_MODE_ONE
+            else -> Player.REPEAT_MODE_OFF
+        }
+        player.repeatMode = repeatMode
+    }
+    private fun toggleShuffle() {
+        shuffleEnabled = !shuffleEnabled
+        player.shuffleModeEnabled = shuffleEnabled
+    }
     override fun onDestroy() { player.release(); super.onDestroy() }
 }
 private fun time(ms: Long) = String.format(Locale.getDefault(), "%d:%02d", ms / 60000, (ms / 1000) % 60)
@@ -132,7 +163,7 @@ private fun getLists(c: Context): Map<String, List<Long>> = try {
 private fun putLists(c: Context, m: Map<String, List<Long>>) { val j = JSONObject(); m.forEach { (k, v) -> j.put(k, JSONArray(v)) }; c.getSharedPreferences("mmplayer", 0).edit().putString("lists", j.toString()).apply() }
 
 @Composable
-private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, play: (Track) -> Unit, toggle: () -> Unit, next: () -> Unit, previous: () -> Unit, refresh: () -> Unit, libraryMessage: String) {
+private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, playerQueue: List<Track>, play: (Track, List<Track>) -> Unit, toggle: () -> Unit, next: () -> Unit, previous: () -> Unit, refresh: () -> Unit, libraryMessage: String, repeatMode: Int, cycleRepeat: () -> Unit, shuffleEnabled: Boolean, toggleShuffle: () -> Unit) {
     val ctx = LocalContext.current
     val prefs = remember { ctx.getSharedPreferences("mmplayer", 0) }
     var lang by remember { mutableStateOf(prefs.getString("lang", "ar") ?: "ar") }
@@ -193,10 +224,9 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, play: 
         "size" -> filtered.sortedByDescending { it.size }
         else -> if (manual.isEmpty()) filtered else filtered.sortedBy { manual.indexOf(it.id).let { n -> if (n < 0) Int.MAX_VALUE else n } }
     }
-    val playerQueue = if (current != null && activeList.isNotBlank() && current.id in lists[activeList].orEmpty()) lists[activeList].orEmpty().mapNotNull { id -> tracks.firstOrNull { it.id == id } } else tracks.filter { it.quran == (current?.quran ?: false) }
     MaterialTheme(colorScheme = darkColorScheme(primary = th.accent, secondary = th.second, background = th.bg, surface = th.panel)) {
         if (expanded && current != null) {
-            FullPlayer(current, playerQueue, playing, th, ar, { expanded = false }, toggle, next, previous, play)
+            FullPlayer(current, playerQueue, playing, th, ar, { expanded = false }, toggle, next, previous, { play(it, playerQueue) }, repeatMode, cycleRepeat, shuffleEnabled, toggleShuffle)
         } else {
             Scaffold(containerColor = th.bg, bottomBar = {
                 Column {
@@ -242,7 +272,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, play: 
                                 Tile(tr("القرآن", "Quran"), tracks.count { it.quran }.toString(), Icons.Rounded.MenuBook, Modifier.weight(1f), th) { tab = "quran" }
                             }
                             Text(tr("أُضيفت مؤخراً", "Recently added"), color = Color.White, fontSize = 18.sp, modifier = Modifier.padding(vertical = 12.dp))
-                            TrackRows(tracks.sortedByDescending { it.added }.take(12), current, th, play, { selected = it }, { _, _ -> })
+                            TrackRows(tracks.sortedByDescending { it.added }.take(12), current, th, { play(it, tracks.filter { q -> q.quran == it.quran }) }, { selected = it }, { _, _ -> })
                         }
                         else -> {
                             if (tab == "playlist") Row(verticalAlignment = Alignment.CenterVertically) { Text(activeList, color = Color.White, modifier = Modifier.weight(1f)); IconButton(onClick = { exportFile.launch(activeList + ".m3u") }) { Icon(Icons.Rounded.FileDownload, null, tint = th.accent) } }
@@ -255,7 +285,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, play: 
                                 } }
                             }
                             if (tracks.isEmpty() || libraryMessage.isNotBlank()) Text(libraryMessage, color = if (tracks.isEmpty()) th.second else Color.LightGray, fontSize = 12.sp, modifier = Modifier.padding(vertical = 6.dp))
-                            TrackRows(shown, current, th, play, { selected = it }, { a, b -> val ids = shown.map { it.id }.toMutableList(); if (a in ids.indices && b in ids.indices) { val v = ids.removeAt(a); ids.add(b, v); manual = ids; prefs.edit().putString("manual_order", JSONArray(ids).toString()).apply(); sort = "manual" } })
+                            TrackRows(shown, current, th, { play(it, base) }, { selected = it }, { a, b -> val ids = shown.map { it.id }.toMutableList(); if (a in ids.indices && b in ids.indices) { val v = ids.removeAt(a); ids.add(b, v); manual = ids; prefs.edit().putString("manual_order", JSONArray(ids).toString()).apply(); sort = "manual" } })
                         }
                     }
                 }
@@ -277,7 +307,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, play: 
 }
 
 @Composable
-private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: AppTheme, ar: Boolean, close: () -> Unit, toggle: () -> Unit, next: () -> Unit, previous: () -> Unit, play: (Track) -> Unit) {
+private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: AppTheme, ar: Boolean, close: () -> Unit, toggle: () -> Unit, next: () -> Unit, previous: () -> Unit, play: (Track) -> Unit, repeatMode: Int, cycleRepeat: () -> Unit, shuffleEnabled: Boolean, toggleShuffle: () -> Unit) {
     var dx by remember { mutableFloatStateOf(0f) }; var dy by remember { mutableFloatStateOf(0f) }
     Column(Modifier.fillMaxSize().background(th.bg).pointerInput(track.id) {
         detectDragGestures(onDragEnd = { if (dy > 85) close() else if (dx < -60) next() else if (dx > 60) previous(); dx = 0f; dy = 0f }) { change, d -> dx += d.x; dy += d.y; change.consume() }
@@ -298,6 +328,20 @@ private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: A
             IconButton(onClick = previous) { Icon(Icons.Rounded.SkipPrevious, null, tint = Color.White, modifier = Modifier.size(42.dp)) }
             IconButton(onClick = toggle, modifier = Modifier.padding(horizontal = 22.dp).size(66.dp).background(th.accent, CircleShape)) { Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null, tint = th.bg, modifier = Modifier.size(36.dp)) }
             IconButton(onClick = next) { Icon(Icons.Rounded.SkipNext, null, tint = Color.White, modifier = Modifier.size(42.dp)) }
+        }
+        Row(Modifier.fillMaxWidth(), horizontalArrangement = Arrangement.SpaceEvenly, verticalAlignment = Alignment.CenterVertically) {
+            TextButton(onClick = toggleShuffle) {
+                Icon(Icons.Rounded.Shuffle, null, tint = if (shuffleEnabled) th.accent else Color.LightGray)
+                Text(if (ar) "عشوائي" else "Shuffle", color = if (shuffleEnabled) th.accent else Color.LightGray)
+            }
+            TextButton(onClick = cycleRepeat) {
+                Icon(if (repeatMode == Player.REPEAT_MODE_ONE) Icons.Rounded.RepeatOne else Icons.Rounded.Repeat, null, tint = if (repeatMode != Player.REPEAT_MODE_OFF) th.accent else Color.LightGray)
+                Text(when (repeatMode) {
+                    Player.REPEAT_MODE_ONE -> if (ar) "تكرار ملف" else "Repeat one"
+                    Player.REPEAT_MODE_ALL -> if (ar) "تكرار الكل" else "Repeat all"
+                    else -> if (ar) "بدون تكرار" else "Repeat off"
+                }, color = if (repeatMode != Player.REPEAT_MODE_OFF) th.accent else Color.LightGray)
+            }
         }
         Spacer(Modifier.weight(0.2f))
         Text(if (ar) "قائمة التشغيل الحالية" else "Current playlist", color = th.accent, fontSize = 12.sp, modifier = Modifier.padding(bottom = 8.dp))
