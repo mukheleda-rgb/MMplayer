@@ -1,6 +1,7 @@
 package com.mmplayer.music
 
 import android.Manifest
+import android.media.audiofx.Equalizer
 import android.content.ContentUris
 import android.content.Context
 import android.content.pm.PackageManager
@@ -80,6 +81,10 @@ class MainActivity : ComponentActivity() {
     private var activeQueue by mutableStateOf(listOf<Track>())
     private var repeatMode by mutableIntStateOf(Player.REPEAT_MODE_OFF)
     private var shuffleEnabled by mutableStateOf(false)
+    private var equalizer: Equalizer? = null
+    private var equalizerLevels by mutableStateOf(listOf<Int>())
+    private var equalizerEnabled by mutableStateOf(false)
+    private var equalizerRange by mutableStateOf(-1500..1500)
     private var libraryMessage by mutableStateOf("")
     private val permission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         if (it) scan() else {
@@ -133,6 +138,7 @@ class MainActivity : ComponentActivity() {
         player.play()
         current = t
         playing = true
+        setupEqualizer()
     }
     private fun toggle() { if (player.isPlaying) player.pause() else if (current != null) player.play() }
     private fun step(d: Int) {
@@ -152,7 +158,29 @@ class MainActivity : ComponentActivity() {
         shuffleEnabled = !shuffleEnabled
         player.shuffleModeEnabled = shuffleEnabled
     }
-    override fun onDestroy() { player.release(); super.onDestroy() }
+    private fun setupEqualizer() {
+        if (equalizer != null || player.audioSessionId == 0) return
+        try {
+            val eq = Equalizer(0, player.audioSessionId)
+            val range = eq.bandLevelRange
+            equalizerRange = range[0].toInt()..range[1].toInt()
+            equalizerLevels = (0 until eq.numberOfBands.toInt()).map { eq.getBandLevel(it.toShort()).toInt() }
+            eq.enabled = equalizerEnabled
+            equalizer = eq
+        } catch (_: Exception) { equalizer = null }
+    }
+    private fun setEqualizerEnabled(enabled: Boolean) {
+        setupEqualizer()
+        equalizerEnabled = enabled
+        try { equalizer?.enabled = enabled } catch (_: Exception) { }
+    }
+    private fun setEqualizerBand(band: Int, level: Int) {
+        try {
+            equalizer?.setBandLevel(band.toShort(), level.toShort())
+            equalizerLevels = equalizerLevels.toMutableList().also { if (band in it.indices) it[band] = level }
+        } catch (_: Exception) { }
+    }
+    override fun onDestroy() { equalizer?.release(); player.release(); super.onDestroy() }
 }
 private fun time(ms: Long) = String.format(Locale.getDefault(), "%d:%02d", ms / 60000, (ms / 1000) % 60)
 private fun sizeText(n: Long) = if (n >= 1048576) String.format(Locale.US, "%.1f MB", n / 1048576.0) else String.format(Locale.US, "%.0f KB", n / 1024.0)
