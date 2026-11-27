@@ -402,13 +402,28 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                             }
                         }
                         "lists" -> {
-                            Row(verticalAlignment = Alignment.CenterVertically) {
-                                Text(tr("قوائم التشغيل المحفوظة", "Saved playlists"), color = Color.White, modifier = Modifier.weight(1f))
-                                IconButton(onClick = { dialog = "new" }) { Icon(Icons.Rounded.Add, null, tint = th.accent) }
-                                IconButton(onClick = { importFile.launch(arrayOf("text/*", "audio/x-mpegurl", "application/octet-stream")) }) { Icon(Icons.Rounded.FileOpen, null, tint = th.accent) }
+                            Column(Modifier.fillMaxSize()) {
+                                Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(tr("قوائم التشغيل المحفوظة", "Saved playlists"), color = Color.White, modifier = Modifier.weight(1f))
+                                    IconButton(onClick = { dialog = "new" }) { Icon(Icons.Rounded.Add, null, tint = th.accent) }
+                                    IconButton(onClick = { importFile.launch(arrayOf("text/*", "audio/x-mpegurl", "application/octet-stream")) }) { Icon(Icons.Rounded.FileOpen, null, tint = th.accent) }
+                                }
+                                if (lists.isEmpty()) {
+                                    Text(tr("أنشئ قائمة أو استورد ملف M3U", "Create a playlist or import an M3U file"), color = Color.LightGray, modifier = Modifier.padding(top = 12.dp))
+                                } else {
+                                    LazyColumn(Modifier.weight(1f).fillMaxWidth(), verticalArrangement = Arrangement.spacedBy(4.dp)) {
+                                        items(lists.keys.toList(), key = { it }) { name ->
+                                            Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(12.dp)).background(th.panel).clickable { activeList = name; tab = "playlist" }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
+                                                Icon(Icons.Rounded.QueueMusic, null, tint = th.accent)
+                                                Text(name, color = Color.White, modifier = Modifier.weight(1f).padding(horizontal = 10.dp))
+                                                Text(lists[name].orEmpty().size.toString(), color = Color.LightGray)
+                                                IconButton(onClick = { activeList = name; exportFile.launch(name + ".m3u") }) { Icon(Icons.Rounded.FileDownload, null, tint = th.accent) }
+                                                IconButton(onClick = { lists = lists - name; putLists(ctx, lists) }) { Icon(Icons.Rounded.Delete, null, tint = Color(0xFFFF8888)) }
+                                            }
+                                        }
+                                    }
+                                }
                             }
-                            lists.keys.forEach { name -> Row(Modifier.fillMaxWidth().padding(vertical = 4.dp).clip(RoundedCornerShape(12.dp)).background(th.panel).clickable { activeList = name; tab = "playlist" }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) { Icon(Icons.Rounded.QueueMusic, null, tint = th.accent); Text(name, color = Color.White, modifier = Modifier.weight(1f).padding(horizontal = 10.dp)); Text(lists[name].orEmpty().size.toString(), color = Color.LightGray); IconButton(onClick = { activeList = name; exportFile.launch(name + ".m3u") }) { Icon(Icons.Rounded.FileDownload, null, tint = th.accent) }; IconButton(onClick = { lists = lists - name; putLists(ctx, lists) }) { Icon(Icons.Rounded.Delete, null, tint = Color(0xFFFF8888)) } } }
-                            if (lists.isEmpty()) Text(tr("أنشئ قائمة أو استورد ملف M3U", "Create a playlist or import an M3U file"), color = Color.LightGray)
                         }
                         "home" -> {
                             val recent = visibleTracks.sortedByDescending { it.added }.take(10)
@@ -451,17 +466,55 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                         "most" -> TrackRows(visibleTracks.sortedByDescending { playCounts[it.id] ?: 0 }.filter { (playCounts[it.id] ?: 0) > 0 }.take(10), current, th, { play(it, visibleTracks.filter { q -> q.quran == it.quran }) }, { selected = it }, { _, _ -> })
                         "recent" -> TrackRows(visibleTracks.sortedByDescending { it.added }.take(10), current, th, { play(it, visibleTracks.filter { q -> q.quran == it.quran }) }, { selected = it }, { _, _ -> })
                         else -> {
-                            if (activeTab == "playlist") Row(verticalAlignment = Alignment.CenterVertically) { Text(activeList, color = Color.White, modifier = Modifier.weight(1f)); IconButton(onClick = { exportFile.launch(activeList + ".m3u") }) { Icon(Icons.Rounded.FileDownload, null, tint = th.accent) } }
-                            OutlinedTextField(search, { search = it }, Modifier.fillMaxWidth(), placeholder = { Text(tr("ابحث عن ملف صوتي", "Search audio")) }, leadingIcon = { Icon(Icons.Rounded.Search, null) }, singleLine = true)
-                            var sortMenu by remember { mutableStateOf(false) }
-                            Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
-                                Text(shown.size.toString() + " " + tr("ملف", "files"), color = Color.LightGray, modifier = Modifier.weight(1f))
-                                Box { TextButton(onClick = { sortMenu = true }) { Icon(Icons.Rounded.Sort, null); Text(tr("ترتيب", "Sort")) }; DropdownMenu(sortMenu, { sortMenu = false }) {
-                                    listOf("manual" to tr("يدوي", "Manual"), "name" to tr("الاسم", "Name"), "date" to tr("التاريخ", "Date"), "size" to tr("الحجم", "Size")).forEach { (v, label) -> DropdownMenuItem(text = { Text(label) }, onClick = { sort = v; sortMenu = false }) }
-                                } }
+                            Column(Modifier.fillMaxSize()) {
+                                if (activeTab == "playlist") {
+                                    Row(Modifier.fillMaxWidth(), verticalAlignment = Alignment.CenterVertically) {
+                                        Text(activeList, color = Color.White, modifier = Modifier.weight(1f))
+                                        IconButton(onClick = { exportFile.launch(activeList + ".m3u") }) { Icon(Icons.Rounded.FileDownload, null, tint = th.accent) }
+                                    }
+                                }
+                                OutlinedTextField(
+                                    value = search,
+                                    onValueChange = { search = it },
+                                    modifier = Modifier.fillMaxWidth().padding(top = 2.dp),
+                                    placeholder = { Text(tr("ابحث عن ملف صوتي", "Search audio")) },
+                                    leadingIcon = { Icon(Icons.Rounded.Search, null) },
+                                    singleLine = true
+                                )
+                                var sortMenu by remember { mutableStateOf(false) }
+                                Row(Modifier.fillMaxWidth().padding(top = 2.dp, bottom = 4.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(shown.size.toString() + " " + tr("ملف", "files"), color = Color.LightGray, modifier = Modifier.weight(1f))
+                                    Box {
+                                        TextButton(onClick = { sortMenu = true }) { Icon(Icons.Rounded.Sort, null); Text(tr("ترتيب", "Sort")) }
+                                        DropdownMenu(expanded = sortMenu, onDismissRequest = { sortMenu = false }) {
+                                            listOf("manual" to tr("يدوي", "Manual"), "name" to tr("الاسم", "Name"), "date" to tr("التاريخ", "Date"), "size" to tr("الحجم", "Size")).forEach { (v, label) ->
+                                                DropdownMenuItem(text = { Text(label) }, onClick = { sort = v; sortMenu = false })
+                                            }
+                                        }
+                                    }
+                                }
+                                if (tracks.isEmpty() || libraryMessage.isNotBlank()) {
+                                    Text(libraryMessage, color = if (tracks.isEmpty()) th.second else Color.LightGray, fontSize = 12.sp, modifier = Modifier.padding(vertical = 6.dp))
+                                }
+                                TrackRows(
+                                    rows = shown,
+                                    current = current,
+                                    th = th,
+                                    play = { play(it, base) },
+                                    menu = { selected = it },
+                                    move = { a, b ->
+                                        val ids = shown.map { it.id }.toMutableList()
+                                        if (a in ids.indices && b in ids.indices) {
+                                            val v = ids.removeAt(a)
+                                            ids.add(b, v)
+                                            manual = ids
+                                            prefs.edit().putString("manual_order", JSONArray(ids).toString()).apply()
+                                            sort = "manual"
+                                        }
+                                    },
+                                    modifier = Modifier.weight(1f).fillMaxWidth()
+                                )
                             }
-                            if (tracks.isEmpty() || libraryMessage.isNotBlank()) Text(libraryMessage, color = if (tracks.isEmpty()) th.second else Color.LightGray, fontSize = 12.sp, modifier = Modifier.padding(vertical = 6.dp))
-                            TrackRows(shown, current, th, { play(it, base) }, { selected = it }, { a, b -> val ids = shown.map { it.id }.toMutableList(); if (a in ids.indices && b in ids.indices) { val v = ids.removeAt(a); ids.add(b, v); manual = ids; prefs.edit().putString("manual_order", JSONArray(ids).toString()).apply(); sort = "manual" } }, Modifier.weight(1f))
                         }
                     }
                     }
