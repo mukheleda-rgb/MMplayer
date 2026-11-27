@@ -250,6 +250,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
     var dialog by remember { mutableStateOf("") }
     var equalizerDialog by remember { mutableStateOf(false) }
     var manual by remember { mutableStateOf(runCatching { val a = JSONArray(prefs.getString("manual_order", "[]") ?: "[]"); (0 until a.length()).map { a.getLong(it) } }.getOrDefault(emptyList())) }
+    var categoryOverrides by remember { mutableStateOf(runCatching { val j = JSONObject(prefs.getString("category_overrides", "{}") ?: "{}"); buildMap<Long, Boolean> { j.keys().forEach { put(it.toLong(), j.getBoolean(it)) } } }.getOrDefault(emptyMap())) }
     var playCounts by remember { mutableStateOf(runCatching { val j = JSONObject(prefs.getString("play_counts", "{}") ?: "{}"); buildMap<Long, Int> { j.keys().forEach { put(it.toLong(), j.getInt(it)) } } }.getOrDefault(emptyMap())) }
     LaunchedEffect(current?.id) { current?.let { t -> playCounts = playCounts + (t.id to ((playCounts[t.id] ?: 0) + 1)); val j = JSONObject(); playCounts.forEach { (id, n) -> j.put(id.toString(), n) }; prefs.edit().putString("play_counts", j.toString()).putLong("last_track_id", t.id).apply() } }
     var hiddenFolders by remember { mutableStateOf(runCatching { val a = JSONArray(prefs.getString("hidden_folders", "[]") ?: "[]"); (0 until a.length()).map { a.getString(it) }.toSet() }.getOrDefault(emptySet())) }
@@ -272,7 +273,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
         } catch (_: Exception) { Toast.makeText(ctx, "تعذر حفظ الصورة", Toast.LENGTH_SHORT).show() }
     }
     val folderCounts = tracks.groupingBy { it.path.substringBeforeLast('/', "").ifBlank { "Unknown folder" } }.eachCount().toSortedMap()
-    val visibleTracks = tracks.filter { it.path.substringBeforeLast('/', "").ifBlank { "Unknown folder" } !in hiddenFolders }
+    val visibleTracks = tracks.map { t -> categoryOverrides[t.id]?.let { t.copy(quran = it) } ?: t }.filter { it.path.substringBeforeLast('/', "").ifBlank { "Unknown folder" } !in hiddenFolders }
     val th = appThemes[themeNo]
     val ar = lang == "ar"
     fun tr(a: String, e: String) = if (ar) a else e
@@ -637,6 +638,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
     if (dialog == "add") AlertDialog(onDismissRequest = { dialog = "" }, title = { Text(tr("إضافة إلى قائمة", "Add to playlist")) }, text = { Column { lists.keys.forEach { n -> TextButton(onClick = { val t = selected; if (t != null) { lists = lists + (n to (lists[n].orEmpty() + t.id).distinct()); putLists(ctx, lists) }; selected = null; dialog = "" }) { Text(n) } } } }, confirmButton = { TextButton(onClick = { dialog = ""; selected = null }) { Text(tr("إغلاق", "Close")) } })
     selected?.let { t ->
         AlertDialog(onDismissRequest = { selected = null }, title = { Text(t.title, maxLines = 1) }, text = { Column {
+            TextButton(onClick = { val updated = categoryOverrides + (t.id to !t.quran); categoryOverrides = updated; val json = JSONObject(); updated.forEach { (id, isQuran) -> json.put(id.toString(), isQuran) }; prefs.edit().putString("category_overrides", json.toString()).apply(); selected = null; Toast.makeText(ctx, if (t.quran) tr("تم نقل الملف إلى تصنيف الموسيقى", "File moved to Music") else tr("تم نقل الملف إلى تصنيف القرآن", "File moved to Quran"), Toast.LENGTH_SHORT).show() }) { Text(if (t.quran) tr("تغيير التصنيف إلى الموسيقى", "Change category to Music") else tr("تغيير التصنيف إلى القرآن", "Change category to Quran")) }
             TextButton(onClick = { dialog = "add" }) { Text(tr("إضافة إلى قائمة تشغيل", "Add to playlist")) }
             TextButton(onClick = { dialog = "new"; newName = "" }) { Text(tr("إنشاء قائمة جديدة", "Create new playlist")) }
             TextButton(onClick = { dialog = "details" }) { Text(tr("معلومات الملف وموقعه وحجمه", "File details, path and size")) }
