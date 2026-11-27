@@ -14,6 +14,7 @@ import android.provider.MediaStore
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.compose.foundation.*
@@ -319,6 +320,20 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
         else -> if (manual.isEmpty()) filtered else filtered.sortedBy { manual.indexOf(it.id).let { n -> if (n < 0) Int.MAX_VALUE else n } }
     }
     MaterialTheme(colorScheme = darkColorScheme(primary = th.accent, secondary = th.second, background = th.bg, surface = th.panel)) {
+        val canHandleBack = expanded || equalizerDialog || showFoldersDialog || settingsSection.isNotBlank() || dialog.isNotBlank() || selected != null || search.isNotBlank() || tab != "home"
+        BackHandler(enabled = canHandleBack) {
+            when {
+                equalizerDialog -> equalizerDialog = false
+                showFoldersDialog -> showFoldersDialog = false
+                settingsSection.isNotBlank() -> settingsSection = ""
+                dialog.isNotBlank() -> dialog = ""
+                selected != null -> selected = null
+                expanded -> expanded = false
+                search.isNotBlank() -> search = ""
+                tab == "playlist" -> { tab = "lists"; activeList = "" }
+                tab != "home" -> tab = "home"
+            }
+        }
         if (expanded && current != null) {
             FullPlayer(current, playerQueue, playing, th, ar, playerEffect, playerTheme, { expanded = false }, toggle, next, previous, { play(it, playerQueue) }, repeatMode, cycleRepeat, shuffleEnabled, toggleShuffle, { equalizerDialog = true })
         } else {
