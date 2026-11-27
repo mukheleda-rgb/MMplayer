@@ -41,6 +41,10 @@ import androidx.compose.foundation.gestures.detectDragGesturesAfterLongPress
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.*
+import androidx.compose.foundation.lazy.grid.GridCells
+import androidx.compose.foundation.lazy.grid.LazyVerticalGrid
+import androidx.compose.foundation.lazy.grid.items as gridItems
+import androidx.compose.foundation.isSystemInDarkTheme
 import androidx.compose.foundation.pager.HorizontalPager
 import androidx.compose.foundation.pager.rememberPagerState
 import androidx.compose.foundation.shape.CircleShape
@@ -82,7 +86,7 @@ import java.util.Locale
 data class Track(val id: Long, val title: String, val artist: String, val uri: Uri, val duration: Long, val quran: Boolean, val album: Long, val size: Long, val added: Long, val path: String) {
     val cover: Uri? get() = if (album > 0) Uri.parse("content://media/external/audio/albumart/" + album) else null
 }
-data class AppTheme(val name: String, val accent: Color, val bg: Color, val panel: Color, val second: Color)
+data class AppTheme(val name: String, val accent: Color, val bg: Color, val panel: Color, val second: Color) { val primaryText: Color get() = if (bg == Color(0xFFF3F5F8)) Color(0xFF17202A) else Color.White; val secondaryText: Color get() = if (bg == Color(0xFFF3F5F8)) Color(0xFF5D6875) else Color(0xFFB8C0CC) }
 private val appThemes = listOf(
     AppTheme("Midnight Mint", Color(0xFF72E0C0), Color(0xFF10131A), Color(0xFF202733), Color(0xFFB6A0FF)),
     AppTheme("Ocean Blue", Color(0xFF63B8FF), Color(0xFF081522), Color(0xFF14283A), Color(0xFF8BD8FF)),
@@ -244,6 +248,11 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
     val prefs = remember { ctx.getSharedPreferences("mmplayer", 0) }
     var lang by remember { mutableStateOf(prefs.getString("lang", "ar") ?: "ar") }
     var themeNo by remember { mutableIntStateOf(prefs.getInt("theme", 0).coerceIn(0, 9)) }
+    var themeMode by remember { mutableStateOf(prefs.getString("theme_mode", "dark") ?: "dark") }
+    var libraryLayout by remember { mutableStateOf(prefs.getString("library_layout", "list") ?: "list") }
+    var artworkShape by remember { mutableStateOf(prefs.getString("artwork_shape", "square") ?: "square") }
+    var selectedTrackIds by remember { mutableStateOf(setOf<Long>()) }
+    var selectionMode by remember { mutableStateOf(false) }
     var tab by remember { mutableStateOf("home") }
     var expanded by remember { mutableStateOf(false) }
     var search by remember { mutableStateOf("") }
@@ -282,7 +291,11 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
     }
     val folderCounts = tracks.groupingBy { it.path.substringBeforeLast('/', "").ifBlank { "Unknown folder" } }.eachCount().toSortedMap()
     val visibleTracks = tracks.map { t -> categoryOverrides[t.id]?.let { t.copy(quran = it) } ?: t }.filter { it.path.substringBeforeLast('/', "").ifBlank { "Unknown folder" } !in hiddenFolders }
-    val th = appThemes[themeNo]
+    val darkMode = when (themeMode) { "light" -> false; "system" -> isSystemInDarkTheme(); else -> true }
+    val baseTheme = appThemes[themeNo]
+    val th = if (darkMode) baseTheme else baseTheme.copy(bg = Color(0xFFF3F5F8), panel = Color.White, second = Color(0xFF596575))
+    val primaryText = th.primaryText
+    val secondaryText = th.secondaryText
     val ar = lang == "ar"
     fun tr(a: String, e: String) = if (ar) a else e
 
@@ -328,7 +341,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
         "size" -> filtered.sortedByDescending { it.size }
         else -> if (manual.isEmpty()) filtered else filtered.sortedBy { manual.indexOf(it.id).let { n -> if (n < 0) Int.MAX_VALUE else n } }
     }
-    MaterialTheme(colorScheme = darkColorScheme(primary = th.accent, secondary = th.second, background = th.bg, surface = th.panel)) {
+    MaterialTheme(colorScheme = if (darkMode) darkColorScheme(primary = th.accent, secondary = th.second, background = th.bg, surface = th.panel) else lightColorScheme(primary = th.accent, secondary = th.second, background = th.bg, surface = th.panel, onSurface = primaryText, onBackground = primaryText)) {
         val canHandleBack = expanded || equalizerDialog || showFoldersDialog || settingsSection.isNotBlank() || dialog.isNotBlank() || selected != null || search.isNotBlank() || tab != "home"
         BackHandler(enabled = canHandleBack) {
             when {
@@ -392,6 +405,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                             Column(Modifier.fillMaxSize().verticalScroll(rememberScrollState())) {
                             Text(tr("الإعدادات", "Settings"), color = Color.White, fontWeight = FontWeight.Bold, fontSize = 20.sp, modifier = Modifier.padding(bottom = 12.dp))
                             SettingsCategoryCard(tr("المظهر واللغة", "Appearance & language"), tr("اختيار اللغة ولون التطبيق والثيم", "Choose language, app color and theme"), Icons.Rounded.Palette, th) { settingsSection = "appearance" }
+                            SettingsCategoryCard(tr("عرض المكتبة", "Library display"), tr("قائمة أو شبكة أو شبكة حرة، وشكل الأغلفة", "List, grid or free-scrolling grid, and artwork shape"), Icons.Rounded.GridView, th) { settingsSection = "library" }
                             SettingsCategoryCard(tr("الخلفيات والمؤثرات", "Backgrounds & effects"), tr("صورة مستقلة لكل واجهة مع التحكم بالتعتيم والتمويه", "Separate image per tab with dim and blur controls"), Icons.Rounded.Wallpaper, th) { settingsSection = "backgrounds" }
                             SettingsCategoryCard(tr("إظهار وإخفاء المجلدات", "Folder visibility"), tr("اختيار المجلدات التي تظهر ملفاتها في المكتبة", "Choose which folders appear in your library"), Icons.Rounded.FolderOpen, th) { showFoldersDialog = true }
                             SettingsCategoryCard(tr("التنقل والحركات", "Navigation & transitions"), tr("السحب بين التبويبات واختيار تأثير الانتقال", "Swipe between tabs and choose transition style"), Icons.Rounded.Swipe, th) { settingsSection = "navigation" }
@@ -526,6 +540,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
     if (settingsSection.isNotBlank()) {
         val sectionTitle = when (settingsSection) {
             "appearance" -> tr("المظهر واللغة", "Appearance & language")
+            "library" -> tr("عرض المكتبة", "Library display")
             "backgrounds" -> tr("الخلفيات والمؤثرات", "Backgrounds & effects")
             "navigation" -> tr("التنقل والحركات", "Navigation & transitions")
             "player" -> tr("مظهر المشغل والمؤثرات", "Player themes & effects")
@@ -545,6 +560,14 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                 FilterChip(selected = !ar, onClick = { lang = "en"; prefs.edit().putString("lang", lang).apply() }, label = { Text("English") })
                             }
                             Spacer(Modifier.height(14.dp))
+                            Text(tr("نمط الإضاءة", "Appearance mode"), color = th.accent, fontWeight = FontWeight.Bold)
+                            listOf("light" to tr("فاتح", "Light"), "dark" to tr("غامق", "Dark"), "system" to tr("حسب النظام", "Follow system")).forEach { (value, label) ->
+                                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (themeMode == value) th.accent.copy(alpha = .15f) else Color.Transparent).clickable { themeMode = value; prefs.edit().putString("theme_mode", value).apply() }.padding(9.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(label, color = primaryText, modifier = Modifier.weight(1f))
+                                    if (themeMode == value) Icon(Icons.Rounded.CheckCircle, null, tint = th.accent)
+                                }
+                            }
+                            Spacer(Modifier.height(12.dp))
                             Text(tr("لون التطبيق والثيم", "App color & theme"), color = th.accent, fontWeight = FontWeight.Bold)
                             appThemes.forEachIndexed { i, item ->
                                 Row(Modifier.fillMaxWidth().padding(vertical = 4.dp).clip(RoundedCornerShape(12.dp)).background(if (themeNo == i) th.accent.copy(alpha = 0.16f) else th.panel).clickable { themeNo = i; prefs.edit().putInt("theme", i).apply() }.padding(10.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -554,8 +577,26 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                 }
                             }
                         }
+                        "library" -> {
+                            Text(tr("طريقة عرض الملفات", "Track layout"), color = th.accent, fontWeight = FontWeight.Bold)
+                            listOf("list" to tr("قائمة", "List"), "grid" to tr("شبكة", "Grid"), "free" to tr("شبكة حرة مثل Apple Watch", "Free-scrolling grid (Apple Watch style)")).forEach { (value, label) ->
+                                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (libraryLayout == value) th.accent.copy(alpha = .15f) else Color.Transparent).clickable { libraryLayout = value; prefs.edit().putString("library_layout", value).apply() }.padding(9.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(label, color = primaryText, modifier = Modifier.weight(1f))
+                                    if (libraryLayout == value) Icon(Icons.Rounded.CheckCircle, null, tint = th.accent)
+                                }
+                            }
+                            Spacer(Modifier.height(14.dp))
+                            Text(tr("شكل صور الملفات", "Artwork shape"), color = th.accent, fontWeight = FontWeight.Bold)
+                            listOf("square" to tr("مربعة", "Square"), "circle" to tr("دائرية", "Circular")).forEach { (value, label) ->
+                                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).clickable { artworkShape = value; prefs.edit().putString("artwork_shape", value).apply() }.padding(9.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(label, color = primaryText, modifier = Modifier.weight(1f))
+                                    if (artworkShape == value) Icon(Icons.Rounded.CheckCircle, null, tint = th.accent)
+                                }
+                            }
+                            Text(tr("يمكنك تحديد عدة ملفات من المكتبة ثم إنشاء قائمة تشغيل منها.", "Select multiple tracks in the library to create a playlist."), color = secondaryText, fontSize = 12.sp)
+                        }
                         "backgrounds" -> {
-                            Text(tr("اختر صورة وخيارات التأثير لكل واجهة", "Choose an image and effects for each tab"), color = Color.LightGray, fontSize = 12.sp)
+                            Text(tr("اختر صورة وخيارات التأثير لكل واجهة", "Choose an image and effects for each tab"), color = secondaryText, fontSize = 12.sp)
                             tabKeys.forEach { key ->
                                 val label = if (ar) mapOf("home" to "الرئيسية", "music" to "الموسيقى", "quran" to "القرآن", "lists" to "القوائم", "settings" to "الإعدادات")[key].orEmpty() else key.replaceFirstChar { it.uppercase() }
                                 Text(label, color = th.accent, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp))
