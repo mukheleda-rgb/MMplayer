@@ -2,6 +2,7 @@ package com.mmplayer.music
 
 import android.Manifest
 import android.media.audiofx.Equalizer
+import android.media.audiofx.Visualizer
 import android.content.ContentUris
 import android.content.ComponentName
 import android.content.Context
@@ -57,6 +58,9 @@ import androidx.compose.ui.graphics.graphicsLayer
 import androidx.compose.ui.unit.IntOffset
 import androidx.compose.ui.zIndex
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.geometry.Offset
+import androidx.compose.ui.graphics.Path
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.font.FontWeight
@@ -101,6 +105,10 @@ class MainActivity : ComponentActivity() {
     private var repeatMode by mutableIntStateOf(Player.REPEAT_MODE_OFF)
     private var shuffleEnabled by mutableStateOf(false)
     private var equalizer: Equalizer? = null
+    private var visualizer: Visualizer? = null
+    private var fftBars by mutableStateOf(List(48) { 0f })
+    private var visualizerEnabled by mutableStateOf(false)
+    private val visualizerPermission = registerForActivityResult(ActivityResultContracts.RequestPermission()) { if (it) startVisualizer() else visualizerEnabled = false }
     private var currentPositionMs by mutableLongStateOf(0L)
     private var equalizerLevels by mutableStateOf(listOf<Int>())
     private var equalizerEnabled by mutableStateOf(false)
@@ -127,7 +135,7 @@ class MainActivity : ComponentActivity() {
                 override fun onIsPlayingChanged(isPlaying: Boolean) { playing = isPlaying }
             })
             setContent {
-                MMApp(tracks, current, playing, activeQueue, { track, queue -> play(track, queue) }, { toggle() }, { step(1) }, { step(-1) }, { refreshLibrary() }, libraryMessage, repeatMode, { cycleRepeat() }, shuffleEnabled, { toggleShuffle() }, equalizerEnabled, equalizerLevels, equalizerRange, { updateEqualizerEnabled(it) }, { band, level -> setEqualizerBand(band, level) }, currentPositionMs, { position -> if (player.mediaItemCount > 0) player.seekTo(position.coerceIn(0L, player.duration.coerceAtLeast(0L))) })
+                MMApp(tracks, current, playing, activeQueue, fftBars, visualizerEnabled, { enableVisualizer(it) }, { track, queue -> play(track, queue) }, { toggle() }, { step(1) }, { step(-1) }, { refreshLibrary() }, libraryMessage, repeatMode, { cycleRepeat() }, shuffleEnabled, { toggleShuffle() }, equalizerEnabled, equalizerLevels, equalizerRange, { updateEqualizerEnabled(it) }, { band, level -> setEqualizerBand(band, level) }, currentPositionMs, { position -> if (player.mediaItemCount > 0) player.seekTo(position.coerceIn(0L, player.duration.coerceAtLeast(0L))) })
             }
             refreshLibrary()
             val ticker = android.os.Handler(mainLooper)
@@ -200,6 +208,41 @@ class MainActivity : ComponentActivity() {
         shuffleEnabled = !shuffleEnabled
         player.shuffleModeEnabled = shuffleEnabled
     }
+    private fun enableVisualizer(enabled: Boolean) {
+        if (!enabled) {
+            visualizerEnabled = false
+            try { visualizer?.release() } catch (_: Exception) {}
+            visualizer = null
+            fftBars = List(48) { 0f }
+        } else if (ContextCompat.checkSelfPermission(this, Manifest.permission.RECORD_AUDIO) == PackageManager.PERMISSION_GRANTED) startVisualizer()
+        else visualizerPermission.launch(Manifest.permission.RECORD_AUDIO)
+    }
+    private fun startVisualizer() {
+        try {
+            visualizer?.release()
+            val v = Visualizer(PlaybackService.audioSessionId)
+            val range = Visualizer.getCaptureSizeRange()
+            v.captureSize = Integer.highestOneBit(range[1]).coerceAtLeast(range[0])
+            v.setDataCaptureListener(object : Visualizer.OnDataCaptureListener {
+                override fun onWaveFormDataCapture(effect: Visualizer?, waveform: ByteArray?, samplingRate: Int) {}
+                override fun onFftDataCapture(effect: Visualizer?, fft: ByteArray?, samplingRate: Int) {
+                    if (fft == null) return
+                    val bars = List(48) { i ->
+                        val k = (2 + i * (fft.size / 2 - 3) / 48).coerceIn(1, fft.size - 2)
+                        val a = fft[k].toInt(); val b = fft[k + 1].toInt()
+                        (kotlin.math.sqrt((a * a + b * b).toDouble()) / 128.0).toFloat().coerceIn(0f, 1f)
+                    }
+                    runOnUiThread { fftBars = bars }
+                }
+            }, Visualizer.getMaxCaptureRate() / 2, false, true)
+            v.enabled = true
+            visualizer = v
+            visualizerEnabled = true
+        } catch (_: Exception) {
+            visualizerEnabled = false
+            Toast.makeText(this, "تعذر تشغيل المؤثر الصوتي على هذا الجهاز", Toast.LENGTH_LONG).show()
+        }
+    }
     private fun setupEqualizer() {
         if (equalizer != null || PlaybackService.audioSessionId == 0) return
         try {
@@ -223,7 +266,7 @@ class MainActivity : ComponentActivity() {
         } catch (_: Exception) { }
     }
     override fun onPause() { super.onPause(); if (::player.isInitialized) getSharedPreferences("mmplayer", 0).edit().putLong("last_track_id", current?.id ?: -1L).putLong("last_position_ms", player.currentPosition).apply() }
-    override fun onDestroy() { equalizer?.release(); controllerFuture?.let { MediaController.releaseFuture(it) }; controllerFuture = null; super.onDestroy() }
+    override fun onDestroy() { try { visualizer?.release() } catch (_: Exception) {}; visualizer = null; equalizer?.release(); controllerFuture?.let { MediaController.releaseFuture(it) }; controllerFuture = null; super.onDestroy() }
 }
 private fun time(ms: Long) = String.format(Locale.getDefault(), "%d:%02d", ms / 60000, (ms / 1000) % 60)
 private fun sizeText(n: Long) = if (n >= 1048576) String.format(Locale.US, "%.1f MB", n / 1048576.0) else String.format(Locale.US, "%.0f KB", n / 1024.0)
@@ -234,7 +277,7 @@ private fun getLists(c: Context): Map<String, List<Long>> = try {
 private fun putLists(c: Context, m: Map<String, List<Long>>) { val j = JSONObject(); m.forEach { (k, v) -> j.put(k, JSONArray(v)) }; c.getSharedPreferences("mmplayer", 0).edit().putString("lists", j.toString()).apply() }
 
 @Composable
-private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, playerQueue: List<Track>, play: (Track, List<Track>) -> Unit, toggle: () -> Unit, next: () -> Unit, previous: () -> Unit, refresh: () -> Unit, libraryMessage: String, repeatMode: Int, cycleRepeat: () -> Unit, shuffleEnabled: Boolean, toggleShuffle: () -> Unit, equalizerEnabled: Boolean, equalizerLevels: List<Int>, equalizerRange: IntRange, setEqualizerEnabled: (Boolean) -> Unit, setEqualizerBand: (Int, Int) -> Unit, currentPositionMs: Long, seekTo: (Long) -> Unit) {
+private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, playerQueue: List<Track>, fftBars: List<Float>, visualizerEnabled: Boolean, enableVisualizer: (Boolean) -> Unit, play: (Track, List<Track>) -> Unit, toggle: () -> Unit, next: () -> Unit, previous: () -> Unit, refresh: () -> Unit, libraryMessage: String, repeatMode: Int, cycleRepeat: () -> Unit, shuffleEnabled: Boolean, toggleShuffle: () -> Unit, equalizerEnabled: Boolean, equalizerLevels: List<Int>, equalizerRange: IntRange, setEqualizerEnabled: (Boolean) -> Unit, setEqualizerBand: (Int, Int) -> Unit, currentPositionMs: Long, seekTo: (Long) -> Unit) {
     val ctx = LocalContext.current
     val prefs = remember { ctx.getSharedPreferences("mmplayer", 0) }
     var lang by remember { mutableStateOf(prefs.getString("lang", "ar") ?: "ar") }
@@ -259,6 +302,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
     var navigationEffect by remember { mutableStateOf(prefs.getString("navigation_effect", "card") ?: "card") }
     var playerEffect by remember { mutableStateOf(prefs.getString("player_effect", "glow") ?: "glow") }
     var playerTheme by remember { mutableStateOf(prefs.getString("player_theme", "glass") ?: "glass") }
+    var visualizerStyle by remember { mutableStateOf(prefs.getString("visualizer_style", "spectrum") ?: "spectrum") }
     var swipeTabsEnabled by remember { mutableStateOf(prefs.getBoolean("swipe_tabs", true)) }
     var backgroundPickerTab by remember { mutableStateOf("home") }
     val tabKeys = listOf("home", "music", "quran", "lists", "settings")
@@ -336,7 +380,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
             }
         }
         if (expanded && current != null) {
-            FullPlayer(current, playerQueue, playing, th, ar, playerEffect, playerTheme, currentPositionMs, { expanded = false }, toggle, next, previous, { play(it, playerQueue) }, { seekTo(it) }, repeatMode, cycleRepeat, shuffleEnabled, toggleShuffle, { equalizerDialog = true })
+            FullPlayer(current, playerQueue, playing, th, ar, playerEffect, playerTheme, fftBars, visualizerEnabled, visualizerStyle, currentPositionMs, { expanded = false }, toggle, next, previous, { play(it, playerQueue) }, { seekTo(it) }, repeatMode, cycleRepeat, shuffleEnabled, toggleShuffle, { equalizerDialog = true })
         } else {
             Scaffold(containerColor = th.bg, bottomBar = {
                 Column {
@@ -595,6 +639,17 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                     if (playerTheme == value) Icon(Icons.Rounded.CheckCircle, null, tint = th.accent)
                                 }
                             }
+                            Text(tr("المؤثرات الصوتية التفاعلية", "Live audio visualizer"), color = th.accent, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 14.dp))
+                            Row(verticalAlignment = Alignment.CenterVertically) {
+                                Text(tr("التفاعل مع الصوت", "React to audio"), color = Color.White, modifier = Modifier.weight(1f))
+                                Switch(checked = visualizerEnabled, onCheckedChange = enableVisualizer)
+                            }
+                            listOf("spectrum" to "الطيف الصوتي", "wave" to "الموجة الصوتية", "circle" to "الطيف الدائري", "particles" to "الجسيمات", "laser" to "الليزر", "orb" to "الكرة الطاقية", "spiral" to "الحلزون", "pulse" to "النبض", "plasma" to "البلازما", "hex" to "السداسيات").forEach { (value, label) ->
+                                Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (visualizerStyle == value) th.accent.copy(alpha = 0.16f) else Color.Transparent).clickable { visualizerStyle = value; prefs.edit().putString("visualizer_style", value).apply() }.padding(9.dp), verticalAlignment = Alignment.CenterVertically) {
+                                    Text(label, color = Color.White, modifier = Modifier.weight(1f))
+                                    if (visualizerStyle == value) Icon(Icons.Rounded.CheckCircle, null, tint = th.accent)
+                                }
+                            }
                             Text(tr("تأثير تغيير الملف أثناء التشغيل", "Track-change effect"), color = th.accent, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp))
                             listOf("glow" to tr("تلاشي ناعم", "Soft fade"), "slide" to tr("انزلاق أفقي", "Horizontal slide"), "rise" to tr("صعود", "Rise"), "drop" to tr("هبوط", "Drop"), "softzoom" to tr("تكبير لطيف", "Soft zoom"), "blur" to tr("ضبابي", "Blur dissolve"), "bounce" to tr("ارتداد", "Bounce"), "ripple" to tr("تموّج", "Ripple"), "shutter" to tr("غالق سريع", "Shutter"), "fade" to tr("تلاشي متداخل", "Cross fade")).forEach { (value, label) ->
                                 Row(Modifier.fillMaxWidth().clip(RoundedCornerShape(10.dp)).background(if (playerEffect == value) th.accent.copy(alpha = 0.16f) else Color.Transparent).clickable { playerEffect = value; prefs.edit().putString("player_effect", value).apply() }.padding(9.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -706,7 +761,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
 }
 
 @Composable
-private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: AppTheme, ar: Boolean, playerEffect: String, playerTheme: String, currentPositionMs: Long, close: () -> Unit, toggle: () -> Unit, next: () -> Unit, previous: () -> Unit, play: (Track) -> Unit, seekTo: (Long) -> Unit, repeatMode: Int, cycleRepeat: () -> Unit, shuffleEnabled: Boolean, toggleShuffle: () -> Unit, openEqualizer: () -> Unit) {
+private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: AppTheme, ar: Boolean, playerEffect: String, playerTheme: String, fftBars: List<Float>, visualizerEnabled: Boolean, visualizerStyle: String, currentPositionMs: Long, close: () -> Unit, toggle: () -> Unit, next: () -> Unit, previous: () -> Unit, play: (Track) -> Unit, seekTo: (Long) -> Unit, repeatMode: Int, cycleRepeat: () -> Unit, shuffleEnabled: Boolean, toggleShuffle: () -> Unit, openEqualizer: () -> Unit) {
     var dx by remember { mutableFloatStateOf(0f) }; var dy by remember { mutableFloatStateOf(0f) }
     val playerBackground = when (playerTheme) { "glass" -> th.panel; "neon" -> Color(0xFF080B12); "minimal" -> th.bg; else -> th.bg }
     Column(Modifier.fillMaxSize().background(playerBackground).pointerInput(track.id) {
@@ -716,6 +771,7 @@ private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: A
         Row(Modifier.fillMaxWidth().padding(vertical = 15.dp), verticalAlignment = Alignment.CenterVertically) { IconButton(onClick = close) { Icon(Icons.Rounded.KeyboardArrowDown, null, tint = Color.White) }; Text(if (ar) "قيد التشغيل" else "Now playing", color = Color.White, modifier = Modifier.weight(1f), textAlign = androidx.compose.ui.text.style.TextAlign.Center); Icon(Icons.Rounded.MoreHoriz, null, tint = Color.White) }
         Spacer(Modifier.weight(0.3f))
         Art(track, Modifier.fillMaxWidth().aspectRatio(1f).padding(horizontal = 18.dp), th)
+        if (visualizerEnabled) AudioVisualizer(fftBars, visualizerStyle, th.accent, Modifier.fillMaxWidth().height(64.dp).padding(horizontal = 22.dp))
         Spacer(Modifier.height(24.dp))
         AnimatedContent(targetState = track, transitionSpec = {
             when (playerEffect) {
@@ -901,6 +957,44 @@ private fun TrackRows(rows: List<Track>, current: Track?, th: AppTheme, play: (T
                 }
                 IconButton(onClick = { menu(t) }) { Icon(Icons.Rounded.MoreVert, null, tint = Color.LightGray) }
                 Icon(Icons.Rounded.DragHandle, null, tint = if (isDragging) Color.White else th.accent, modifier = Modifier.padding(horizontal = 8.dp))
+            }
+        }
+    }
+}
+
+@Composable
+private fun AudioVisualizer(values: List<Float>, style: String, color: Color, modifier: Modifier = Modifier) {
+    Canvas(modifier) {
+        val count = values.size.coerceAtLeast(1)
+        val mid = size.height / 2f
+        val step = size.width / count
+        val amp = size.height * 0.44f
+        if (style == "wave" || style == "pulse") {
+            val path = Path()
+            values.forEachIndexed { i, v ->
+                val y = mid + kotlin.math.sin(i * 0.42f) * v * amp
+                if (i == 0) path.moveTo(0f, y) else path.lineTo(i * step, y)
+            }
+            drawPath(path, color, style = Stroke(3.dp.toPx()))
+        } else if (style == "circle" || style == "orb" || style == "spiral") {
+            val radius = minOf(size.width, size.height) * 0.2f
+            values.forEachIndexed { i, v ->
+                val angle = i.toFloat() / count * (Math.PI * 2).toFloat()
+                val r = radius + v * amp
+                val x = size.width / 2 + kotlin.math.cos(angle) * r
+                val y = mid + kotlin.math.sin(angle) * r
+                drawLine(color.copy(alpha = 0.35f + v * 0.65f), Offset(size.width / 2, mid), Offset(x, y), 2.dp.toPx())
+            }
+        } else {
+            values.forEachIndexed { i, v ->
+                val h = (0.08f + v) * amp
+                val x = i * step + step * 0.18f
+                val w = (step * 0.64f).coerceAtLeast(1f)
+                when (style) {
+                    "particles" -> drawCircle(color.copy(alpha = 0.3f + v * 0.7f), 2.dp.toPx() + v * 4.dp.toPx(), Offset(x + w / 2, mid - h))
+                    "laser" -> drawLine(color.copy(alpha = 0.3f + v * 0.7f), Offset(x + w / 2, mid - h), Offset(x + w / 2, mid + h), 1.dp.toPx() + v * 3.dp.toPx())
+                    else -> drawRoundRect(color.copy(alpha = 0.25f + v * 0.75f), Offset(x, mid - h), androidx.compose.ui.geometry.Size(w, h * 2), cornerRadius = androidx.compose.ui.geometry.CornerRadius(w))
+                }
             }
         }
     }
