@@ -327,10 +327,12 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                     if (tabBackgrounds[key].orEmpty().isNotBlank()) IconButton(onClick = { tabBackgrounds[key] = ""; prefs.edit().remove("bg_" + key).apply() }) { Icon(Icons.Rounded.Delete, null, tint = th.second) }
                                 }
                             }
-                            Text(tr("تعتيم الخلفية", "Dim amount"), color = Color.White, fontSize = 12.sp)
-                            Slider(value = tabDim[tab] ?: 0.42f, onValueChange = { tabDim[tab] = it; prefs.edit().putFloat("dim_" + tab, it).apply() }, valueRange = 0f..0.9f)
-                            Text(tr("تمويه الخلفية", "Blur amount"), color = Color.White, fontSize = 12.sp)
-                            Slider(value = tabBlur[tab] ?: 0f, onValueChange = { tabBlur[tab] = it; prefs.edit().putFloat("blur_" + tab, it).apply() }, valueRange = 0f..24f)
+                            tabKeys.forEach { key ->
+                                Text((if (ar) "تأثيرات " + mapOf("home" to "الرئيسية", "music" to "الموسيقى", "quran" to "القرآن", "lists" to "القوائم", "settings" to "الإعدادات")[key] else key) + " — " + tr("التعتيم", "Dim"), color = Color.White, fontSize = 12.sp)
+                                Slider(value = tabDim[key] ?: 0.42f, onValueChange = { tabDim[key] = it; prefs.edit().putFloat("dim_" + key, it).apply() }, valueRange = 0f..0.9f)
+                                Text(tr("التمويه", "Blur"), color = Color.LightGray, fontSize = 11.sp)
+                                Slider(value = tabBlur[key] ?: 0f, onValueChange = { tabBlur[key] = it; prefs.edit().putFloat("blur_" + key, it).apply() }, valueRange = 0f..24f)
+                            }
                             Text(tr("اللغة", "Language"), color = Color.White, fontWeight = FontWeight.Bold)
                             Row { FilterChip(selected = ar, onClick = { lang = "ar"; prefs.edit().putString("lang", lang).apply() }, label = { Text("العربية") }); Spacer(Modifier.width(8.dp)); FilterChip(selected = !ar, onClick = { lang = "en"; prefs.edit().putString("lang", lang).apply() }, label = { Text("English") }) }
                             Row(Modifier.fillMaxWidth().padding(top = 18.dp, bottom = 8.dp), verticalAlignment = Alignment.CenterVertically) {
@@ -380,15 +382,15 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                                             Text(time(if (last?.id == current?.id) currentPositionMs else prefs.getLong("last_position_ms", 0L)), color = Color.LightGray, fontSize = 11.sp)
                                         }
                                         IconButton(onClick = previous) { Icon(Icons.Rounded.SkipPrevious, null, tint = th.accent) }
-                                        IconButton(onClick = toggle) { Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null, tint = th.accent) }
+                                        IconButton(onClick = { if (current == null && last != null) play(last, visibleTracks.filter { it.quran == last.quran }) else toggle() }) { Icon(if (playing) Icons.Rounded.Pause else Icons.Rounded.PlayArrow, null, tint = th.accent) }
                                         IconButton(onClick = next) { Icon(Icons.Rounded.SkipNext, null, tint = th.accent) }
                                     }
                                 }
                             }
                             Text(tr("الأكثر تشغيلًا", "Most played"), color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 14.dp))
-                            TrackRows(popular, current, th, { play(it, visibleTracks.filter { q -> q.quran == it.quran }) }, { selected = it }, { _, _ -> })
+                            HomeTrackStrip(popular, current, th, { play(it, visibleTracks.filter { q -> q.quran == it.quran }) })
                             Text(tr("المضاف حديثاً", "Recently added"), color = Color.White, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp))
-                            TrackRows(recent, current, th, { play(it, visibleTracks.filter { q -> q.quran == it.quran }) }, { selected = it }, { _, _ -> })
+                            HomeTrackStrip(recent, current, th, { play(it, visibleTracks.filter { q -> q.quran == it.quran }) })
                         }
                         "most" -> TrackRows(visibleTracks.sortedByDescending { playCounts[it.id] ?: 0 }.filter { (playCounts[it.id] ?: 0) > 0 }.take(10), current, th, { play(it, visibleTracks.filter { q -> q.quran == it.quran }) }, { selected = it }, { _, _ -> })
                         "recent" -> TrackRows(visibleTracks.sortedByDescending { it.added }.take(10), current, th, { play(it, visibleTracks.filter { q -> q.quran == it.quran }) }, { selected = it }, { _, _ -> })
@@ -558,6 +560,19 @@ private fun HomeDashboardTile(title: String, count: String, icon: androidx.compo
                 Icon(icon, null, tint = th.accent, modifier = Modifier.size(19.dp))
                 Text(count, color = Color.White, fontSize = 23.sp, fontWeight = FontWeight.Bold)
                 Text(title, color = Color.LightGray, fontSize = 11.sp, maxLines = 1)
+            }
+        }
+    }
+}
+
+@Composable
+private fun HomeTrackStrip(rows: List<Track>, current: Track?, th: AppTheme, play: (Track) -> Unit) {
+    LazyRow(horizontalArrangement = Arrangement.spacedBy(10.dp), contentPadding = PaddingValues(vertical = 6.dp)) {
+        items(rows, key = { it.id }) { t ->
+            Column(Modifier.width(112.dp).clip(RoundedCornerShape(13.dp)).background(if (current?.id == t.id) th.accent.copy(alpha = 0.22f) else th.panel).clickable { play(t) }.padding(8.dp)) {
+                Art(t, Modifier.size(92.dp).align(Alignment.CenterHorizontally), th)
+                Text(t.title, color = Color.White, fontSize = 11.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
+                Text(t.artist, color = Color.LightGray, fontSize = 9.sp, maxLines = 1, overflow = TextOverflow.Ellipsis)
             }
         }
     }
