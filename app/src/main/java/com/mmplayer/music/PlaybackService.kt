@@ -21,6 +21,22 @@ class PlaybackService : MediaLibraryService() {
     private var mediaLibrarySession: MediaLibrarySession? = null
 
     private val libraryCallback = object : MediaLibrarySession.Callback {
+        override fun onAddMediaItems(
+            mediaSession: MediaSession,
+            controller: MediaSession.ControllerInfo,
+            mediaItems: List<MediaItem>
+        ): ListenableFuture<List<MediaItem>> {
+            // Resolve browse requests that carry only our stable media ID.
+            val resolved = mediaItems.map { item ->
+                if (item.localConfiguration != null) item
+                else {
+                    val id = item.mediaId.removePrefix(TRACK_PREFIX).toLongOrNull()
+                    id?.let { findAudioItem(it) } ?: item
+                }
+            }
+            return Futures.immediateFuture(resolved)
+        }
+
         override fun onGetLibraryRoot(
             session: MediaLibrarySession,
             browser: MediaSession.ControllerInfo,
