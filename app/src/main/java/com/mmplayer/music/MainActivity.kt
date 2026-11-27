@@ -1,6 +1,8 @@
 package com.mmplayer.music
 
 import android.Manifest
+import android.app.Activity
+import android.app.RecoverableSecurityException
 import android.media.audiofx.Equalizer
 import android.content.ContentUris
 import android.content.ComponentName
@@ -14,6 +16,7 @@ import android.provider.MediaStore
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.activity.compose.setContent
+import androidx.activity.result.IntentSenderRequest
 import androidx.activity.compose.BackHandler
 import androidx.activity.result.contract.ActivityResultContracts
 import androidx.activity.compose.rememberLauncherForActivityResult
@@ -134,6 +137,19 @@ class MainActivity : ComponentActivity() {
     private var libraryMessage by mutableStateOf("")
     private val libraryExecutor = Executors.newSingleThreadExecutor()
     private lateinit var artworkLoader: ImageLoader
+    private var deleteResultCallback: ((Boolean) -> Unit)? = null
+    private var legacyDeleteItems: List<Track> = emptyList()
+    private var legacyDeleteIndex = 0
+    private val deleteLauncher = registerForActivityResult(ActivityResultContracts.StartIntentSenderForResult()) { result ->
+        val approved = result.resultCode == Activity.RESULT_OK
+        if (legacyDeleteItems.isNotEmpty()) {
+            if (approved) { legacyDeleteIndex++; deleteLegacyNext() } else finishLegacyDelete(false)
+        } else {
+            if (approved) scan()
+            deleteResultCallback?.invoke(approved)
+            deleteResultCallback = null
+        }
+    }
     private val permission = registerForActivityResult(ActivityResultContracts.RequestPermission()) {
         if (it) scan() else {
             tracks = emptyList()
@@ -181,6 +197,51 @@ class MainActivity : ComponentActivity() {
             ticker.post(tick)
         }, ContextCompat.getMainExecutor(this))
     }
+    private fun requestDeleteTracks(items: List<Track>, onResult: (Boolean) -> Unit) {
+        val targets = items.distinctBy { it.id }
+        if (targets.isEmpty()) { onResult(false); return }
+        if (Build.VERSION.SDK_INT >= 30) {
+            try {
+                val request = MediaStore.createDeleteRequest(contentResolver, targets.map { it.uri })
+                deleteResultCallback = onResult
+                deleteLauncher.launch(IntentSenderRequest.Builder(request.intentSender).build())
+            } catch (e: Exception) {
+                Toast.makeText(this, e.localizedMessage ?: "تعذر طلب حذف الملفات", Toast.LENGTH_LONG).show()
+                onResult(false)
+            }
+        } else {
+            legacyDeleteItems = targets
+            legacyDeleteIndex = 0
+            deleteResultCallback = onResult
+            deleteLegacyNext()
+        }
+    }
+
+    private fun deleteLegacyNext() {
+        while (legacyDeleteIndex < legacyDeleteItems.size) {
+            try {
+                contentResolver.delete(legacyDeleteItems[legacyDeleteIndex].uri, null, null)
+                legacyDeleteIndex++
+            } catch (e: RecoverableSecurityException) {
+                deleteLauncher.launch(IntentSenderRequest.Builder(e.userAction.actionIntent.intentSender).build())
+                return
+            } catch (e: Exception) {
+                Toast.makeText(this, e.localizedMessage ?: "تعذر حذف الملف من الجهاز", Toast.LENGTH_LONG).show()
+                finishLegacyDelete(false)
+                return
+            }
+        }
+        finishLegacyDelete(true)
+    }
+
+    private fun finishLegacyDelete(success: Boolean) {
+        legacyDeleteItems = emptyList()
+        legacyDeleteIndex = 0
+        if (success) scan()
+        deleteResultCallback?.invoke(success)
+        deleteResultCallback = null
+    }
+
     private fun refreshLibrary() {
         val p = if (Build.VERSION.SDK_INT >= 33) Manifest.permission.READ_MEDIA_AUDIO else Manifest.permission.READ_EXTERNAL_STORAGE
         if (ContextCompat.checkSelfPermission(this, p) == PackageManager.PERMISSION_GRANTED) scan() else permission.launch(p)
