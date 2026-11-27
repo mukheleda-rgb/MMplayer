@@ -520,10 +520,13 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
     var categoryOverrides by remember { mutableStateOf(runCatching { val j = JSONObject(prefs.getString("category_overrides", "{}") ?: "{}"); buildMap<Long, Boolean> { j.keys().forEach { put(it.toLong(), j.getBoolean(it)) } } }.getOrDefault(emptyMap())) }
     var playCounts by remember { mutableStateOf(runCatching { val j = JSONObject(prefs.getString("play_counts", "{}") ?: "{}"); buildMap<Long, Int> { j.keys().forEach { put(it.toLong(), j.getInt(it)) } } }.getOrDefault(emptyMap())) }
     var favoriteIds by remember { mutableStateOf(runCatching { val a = JSONArray(prefs.getString("favorite_ids", "[]") ?: "[]"); (0 until a.length()).map { a.getLong(it) }.toSet() }.getOrDefault(emptySet())) }
+    var recentlyPlayedIds by remember { mutableStateOf(runCatching { val a = JSONArray(prefs.getString("recently_played_ids", "[]") ?: "[]"); (0 until a.length()).map { a.getLong(it) } }.getOrDefault(emptyList())) }
     var favoritesOnly by remember { mutableStateOf(false) }
     var quranReciter by remember { mutableStateOf("") }
     LaunchedEffect(current?.id) { current?.let { t ->
         playCounts = playCounts + (t.id to ((playCounts[t.id] ?: 0) + 1))
+        recentlyPlayedIds = (listOf(t.id) + recentlyPlayedIds.filterNot { it == t.id }).take(50)
+        prefs.edit().putString("recently_played_ids", JSONArray(recentlyPlayedIds).toString()).apply()
         val j = JSONObject(); playCounts.forEach { (id, n) -> j.put(id.toString(), n) }
         val editor = prefs.edit().putString("play_counts", j.toString()).putLong("last_track_id", t.id)
         if (t.quran) editor.putLong("last_quran_track_id", t.id)
@@ -773,6 +776,7 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                             val recent = remember(visibleTracks) { visibleTracks.sortedByDescending { it.added }.take(10) }
                             val popular = remember(visibleTracks, playCounts) { visibleTracks.sortedByDescending { playCounts[it.id] ?: 0 }.filter { (playCounts[it.id] ?: 0) > 0 }.take(10) }
                             val favorites = remember(visibleTracks, favoriteIds) { visibleTracks.filter { it.id in favoriteIds } }
+                            val recentlyPlayed = remember(visibleTracks, recentlyPlayedIds) { recentlyPlayedIds.mapNotNull { id -> visibleTracks.firstOrNull { it.id == id } }.take(10) }
                             val smartMix = remember(visibleTracks, playCounts) {
                                 visibleTracks.filter { !it.quran }
                                     .sortedWith(compareByDescending<Track> { playCounts[it.id] ?: 0 }.thenByDescending { it.added })
@@ -873,6 +877,10 @@ private fun MMApp(tracks: List<Track>, current: Track?, playing: Boolean, player
                             HomeTrackStrip(popular, current, th, { play(it, visibleTracks.filter { q -> q.quran == it.quran }) }, { selected = it })
                             Text(tr("المضاف حديثاً", "Recently added"), color = primaryText, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp))
                             HomeTrackStrip(recent, current, th, { play(it, visibleTracks.filter { q -> q.quran == it.quran }) }, { selected = it })
+                            if (recentlyPlayed.isNotEmpty()) {
+                                Text(tr("استمع إليها مجدداً", "Recently played"), color = primaryText, fontSize = 18.sp, fontWeight = FontWeight.Bold, modifier = Modifier.padding(top = 12.dp))
+                                HomeTrackStrip(recentlyPlayed, current, th, { play(it, visibleTracks.filter { q -> q.quran == it.quran }) }, { selected = it })
+                            }
                             }
                         }
                         "most" -> TrackRows(visibleTracks.sortedByDescending { playCounts[it.id] ?: 0 }.filter { (playCounts[it.id] ?: 0) > 0 }.take(10), current, th, { play(it, visibleTracks.filter { q -> q.quran == it.quran }) }, { selected = it }, { _, _ -> })
