@@ -766,6 +766,59 @@ private fun CurrentPositionLabel(position: State<Long>, isCurrent: Boolean, save
 }
 
 @Composable
+private fun trackTransition(effect: String): AnimatedContentTransitionScope<Track>.() -> ContentTransform = {
+    when (effect) {
+        "fade" -> fadeIn(tween(180)) togetherWith fadeOut(tween(120))
+        "slide" -> (slideInHorizontally(tween(190)) { it / 3 } + fadeIn(tween(160))) togetherWith (slideOutHorizontally(tween(150)) { -it / 4 } + fadeOut(tween(120)))
+        "rise" -> (slideInVertically(tween(210)) { it / 2 } + fadeIn(tween(180))) togetherWith (slideOutVertically(tween(150)) { -it / 4 } + fadeOut(tween(120)))
+        "drop" -> (slideInVertically(tween(210)) { -it / 2 } + fadeIn(tween(180))) togetherWith (slideOutVertically(tween(150)) { it / 4 } + fadeOut(tween(120)))
+        "softzoom" -> (fadeIn(tween(220)) + scaleIn(initialScale = 0.94f, animationSpec = tween(220))) togetherWith (fadeOut(tween(150)) + scaleOut(targetScale = 0.96f, animationSpec = tween(150)))
+        "blur" -> (fadeIn(tween(240)) + scaleIn(initialScale = 0.98f, animationSpec = tween(240))) togetherWith fadeOut(tween(160))
+        "bounce" -> (slideInHorizontally(spring(dampingRatio = Spring.DampingRatioMediumBouncy, stiffness = Spring.StiffnessLow)) { it / 2 } + fadeIn(tween(220))) togetherWith (slideOutHorizontally(tween(170)) { -it / 5 } + fadeOut(tween(140)))
+        "ripple" -> (fadeIn(tween(260)) + scaleIn(initialScale = 0.90f, animationSpec = tween(260))) togetherWith (fadeOut(tween(170)) + scaleOut(targetScale = 1.04f, animationSpec = tween(170)))
+        "shutter" -> (slideInHorizontally(tween(180)) { it } + fadeIn(tween(140))) togetherWith (slideOutHorizontally(tween(150)) { -it } + fadeOut(tween(110)))
+        else -> (fadeIn(tween(200)) + scaleIn(initialScale = 0.97f, animationSpec = tween(200))) togetherWith fadeOut(tween(140))
+    }
+}
+
+@Composable
+private fun WaveformBars(playing: Boolean, color: Color, modifier: Modifier = Modifier) {
+    val transition = rememberInfiniteTransition(label = "waveform")
+    val phase = transition.animateFloat(0f, (2 * Math.PI).toFloat(), infiniteRepeatable(tween(1400, easing = LinearEasing)), label = "phase")
+    Canvas(modifier) {
+        val count = 32
+        val gap = size.width * 0.012f
+        val barWidth = (size.width - gap * (count - 1)) / count
+        for (i in 0 until count) {
+            val amp = if (playing) 0.2f + 0.8f * abs(sin(phase.value + i * 0.45f) * cos(phase.value * 0.7f + i * 0.2f)) else 0.1f
+            val h = size.height * amp
+            drawRoundRect(color.copy(alpha = 0.45f + 0.55f * amp), topLeft = Offset(i * (barWidth + gap), (size.height - h) / 2f), size = androidx.compose.ui.geometry.Size(barWidth, h), cornerRadius = androidx.compose.ui.geometry.CornerRadius(barWidth / 2f))
+        }
+    }
+}
+
+@Composable
+private fun CassetteDeck(track: Track, th: AppTheme, accent: Color, angle: Float) {
+    val shape = RoundedCornerShape(18.dp)
+    Box(Modifier.fillMaxWidth().padding(horizontal = 10.dp).aspectRatio(1.45f).shadow(14.dp, shape).clip(shape).background(Brush.verticalGradient(listOf(Color(0xFF5A3A24), Color(0xFF2A1B12)))).border(2.dp, accent.copy(alpha = 0.5f), shape)) {
+        Art(track, Modifier.align(Alignment.TopCenter).fillMaxWidth(0.86f).fillMaxHeight(0.5f).padding(top = 12.dp), th)
+        Canvas(Modifier.align(Alignment.BottomCenter).fillMaxWidth(0.86f).fillMaxHeight(0.38f).padding(bottom = 12.dp)) {
+            drawRoundRect(Color(0xFF14100C), cornerRadius = androidx.compose.ui.geometry.CornerRadius(size.height / 2f))
+            val radius = size.height * 0.42f
+            listOf(size.width * 0.28f, size.width * 0.72f).forEach { cx ->
+                val center = Offset(cx, size.height / 2f)
+                drawCircle(Color(0xFFE8DCC8), radius, center)
+                for (k in 0 until 6) {
+                    val a = Math.toRadians((k * 60f + angle).toDouble())
+                    drawLine(Color(0xFF14100C), center, Offset(center.x + radius * 0.85f * cos(a).toFloat(), center.y + radius * 0.85f * sin(a).toFloat()), strokeWidth = 3.dp.toPx())
+                }
+                drawCircle(Color(0xFF14100C), radius * 0.35f, center)
+            }
+        }
+    }
+}
+
+@Composable
 private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: AppTheme, ar: Boolean, playerEffect: String, playerTheme: String, currentPositionMs: State<Long>, close: () -> Unit, toggle: () -> Unit, next: () -> Unit, previous: () -> Unit, play: (Track) -> Unit, seekTo: (Long) -> Unit, repeatMode: Int, cycleRepeat: () -> Unit, shuffleEnabled: Boolean, toggleShuffle: () -> Unit, openEqualizer: () -> Unit) {
     var dx by remember { mutableFloatStateOf(0f) }; var dy by remember { mutableFloatStateOf(0f) }
     val playerBackground = when (playerTheme) {
@@ -789,6 +842,18 @@ private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: A
         "minimal" -> Color(0xFFE5E7EB)
         else -> th.accent
     }
+    var reelAngle by remember { mutableFloatStateOf(0f) }
+    LaunchedEffect(playing, playerTheme) {
+        if (playing && (playerTheme == "vinyl" || playerTheme == "cassette")) {
+            var last = withFrameNanos { it }
+            while (true) {
+                val now = withFrameNanos { it }
+                reelAngle = (reelAngle + (now - last) / 1_000_000_000f * if (playerTheme == "vinyl") 36f else 90f) % 360f
+                last = now
+            }
+        }
+    }
+
     Column(Modifier.fillMaxSize().background(Brush.verticalGradient(listOf(playerBackground, when (playerTheme) { "3d" -> Color(0xFF202D40); "cinematic" -> Color(0xFF19151D); "vinyl" -> Color(0xFF211B30); else -> playerBackground }, Color(0xFF080A10)))).pointerInput(track.id) {
         detectDragGestures(onDragEnd = { if (dy > 85) close() else if (dx < -60) next() else if (dx > 60) previous(); dx = 0f; dy = 0f }) { change, d -> dx += d.x; dy += d.y; change.consume() }
     }.padding(horizontal = 20.dp)) {
@@ -811,25 +876,23 @@ private fun FullPlayer(track: Track, queue: List<Track>, playing: Boolean, th: A
                 })
                 .border(if (playerTheme == "3d" || playerTheme == "glass") 1.dp else 0.dp, Color.White.copy(alpha = .14f), if (playerTheme == "vinyl") CircleShape else RoundedCornerShape(24.dp))
         ) {
-            Art(track, Modifier.fillMaxSize(), th)
-            if (playerTheme == "vinyl") Box(Modifier.align(Alignment.Center).size(22.dp).clip(CircleShape).background(Color(0xFFB8A0FF)).border(4.dp, Color(0xFF17151D), CircleShape))
-            if (playerTheme == "cassette") Box(Modifier.align(Alignment.BottomCenter).fillMaxWidth(.72f).padding(bottom = 12.dp).height(5.dp).clip(CircleShape).background(Color(0xFFE2A56D).copy(alpha = .8f)))
-        }
-        Spacer(Modifier.height(24.dp))
-        AnimatedContent(targetState = track, transitionSpec = {
-            when (playerEffect) {
-                "fade" -> fadeIn(tween(180)) togetherWith fadeOut(tween(120))
-                "slide" -> (slideInHorizontally(tween(190)) { it / 3 } + fadeIn(tween(160))) togetherWith (slideOutHorizontally(tween(150)) { -it / 4 } + fadeOut(tween(120)))
-                "rise" -> (slideInVertically(tween(210)) { it / 2 } + fadeIn(tween(180))) togetherWith (slideOutVertically(tween(150)) { -it / 4 } + fadeOut(tween(120)))
-                "drop" -> (slideInVertically(tween(210)) { -it / 2 } + fadeIn(tween(180))) togetherWith (slideOutVertically(tween(150)) { it / 4 } + fadeOut(tween(120)))
-                "softzoom" -> (fadeIn(tween(220)) + scaleIn(initialScale = 0.94f, animationSpec = tween(220))) togetherWith (fadeOut(tween(150)) + scaleOut(targetScale = 0.96f, animationSpec = tween(150)))
-                "blur" -> (fadeIn(tween(240)) + scaleIn(initialScale = 0.98f, animationSpec = tween(240))) togetherWith fadeOut(tween(160))
-                "bounce" -> (slideInHorizontally(tween(260)) { it / 2 } + fadeIn(tween(220))) togetherWith (slideOutHorizontally(tween(170)) { -it / 5 } + fadeOut(tween(140)))
-                "ripple" -> (fadeIn(tween(260)) + scaleIn(initialScale = 0.90f, animationSpec = tween(260))) togetherWith (fadeOut(tween(170)) + scaleOut(targetScale = 1.04f, animationSpec = tween(170)))
-                "shutter" -> (slideInHorizontally(tween(180)) { it } + fadeIn(tween(140))) togetherWith (slideOutHorizontally(tween(150)) { -it } + fadeOut(tween(110)))
-                else -> (fadeIn(tween(200)) + scaleIn(initialScale = 0.97f, animationSpec = tween(200))) togetherWith fadeOut(tween(140))
+            if (playerTheme == "cassette") {
+                CassetteDeck(track, th, playerAccent, reelAngle)
+            } else {
+                AnimatedContent(targetState = track, transitionSpec = trackTransition(playerEffect), label = "player-artwork") { animatedArt ->
+                    Art(animatedArt, Modifier.fillMaxSize().graphicsLayer { if (playerTheme == "vinyl") rotationZ = reelAngle }, th, circular = playerTheme == "vinyl")
+                }
+                if (playerTheme == "vinyl") {
+                    Canvas(Modifier.fillMaxSize()) {
+                        for (i in 1..6) drawCircle(Color.Black.copy(alpha = 0.18f), radius = size.minDimension / 2f * (0.30f + i * 0.11f), style = Stroke(1.dp.toPx()))
+                    }
+                    Box(Modifier.align(Alignment.Center).size(22.dp).clip(CircleShape).background(Color(0xFFB8A0FF)).border(4.dp, Color(0xFF17151D), CircleShape))
+                }
             }
-        }, label = "now-playing-track") { animatedTrack ->
+        }
+        if (playerTheme == "wave" || playerTheme == "neon") WaveformBars(playing, playerAccent, Modifier.fillMaxWidth().height(40.dp).padding(top = 8.dp))
+        Spacer(Modifier.height(24.dp))
+        AnimatedContent(targetState = track, transitionSpec = trackTransition(playerEffect), label = "now-playing-track") { animatedTrack ->
             Column(horizontalAlignment = Alignment.CenterHorizontally) {
                 Text(animatedTrack.title, color = th.primaryText, fontSize = 22.sp, fontWeight = FontWeight.Bold, modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center, maxLines = 1, overflow = TextOverflow.Ellipsis)
                 Text(animatedTrack.artist, color = th.secondaryText, modifier = Modifier.fillMaxWidth(), textAlign = androidx.compose.ui.text.style.TextAlign.Center)
